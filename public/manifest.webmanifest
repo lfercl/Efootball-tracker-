@@ -1,0 +1,9 @@
+{
+  "name": "Matchday Ledger - eFootball Tracker",
+  "short_name": "eFootball",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#071A14",
+  "theme_color": "#071A14",
+  "description": "Estatísticas de grupos eFootball"
+}
