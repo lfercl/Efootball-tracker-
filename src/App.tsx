@@ -283,6 +283,9 @@ function GlobalStyle() {
   return (
     <style>{`
       html { font-size: 18px; }
+      html, body, #root { min-height: 100%; }
+      body { overscroll-behavior-y: none; }
+      button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
       .font-oswald { font-family: 'Oswald', sans-serif; font-weight: 500; }
       .font-inter { font-family: 'Inter', sans-serif; }
       .md-ui-boost .text-xs { font-size: 0.86rem !important; }
@@ -341,7 +344,7 @@ function GlobalStyle() {
       .md-tab{ color:#CBD8D1; background:transparent; transition:background .15s ease, color .15s ease; border:none; }
       .md-tab.active{ background:#FFC85C; color:#071A14; }
       .md-tabs-row{ overflow-x:visible; }
-      .md-tabs-inner{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0.35rem; }
+      .md-tabs-inner{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.4rem; }
       .md-tab-swipe{ min-width:0; }
 
       @media (min-width: 640px) {
@@ -357,6 +360,10 @@ function GlobalStyle() {
 
       .md-max-88vw{ max-width:88vw; }
       .md-shadow-dark{ box-shadow:0 25px 50px -12px rgba(0,0,0,0.6); }
+      .md-mobile-pad-bottom{ padding-bottom: calc(6.25rem + env(safe-area-inset-bottom)); }
+      .md-safe-float{ bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
+      .md-touch-target{ min-height:44px; }
+      .md-scroll-y{ -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
 
       @keyframes mdSlideIn { from { transform: translateX(24px); opacity:0 } to { transform: translateX(0); opacity:1 } }
       @keyframes mdPopIn { from { transform: scale(0.5); opacity:0 } to { transform: scale(1); opacity:1 } }
@@ -1931,7 +1938,7 @@ export default function App() {
 
           <Tabs tab={tab} setTab={setTab} unreadChat={unreadChat} />
 
-          <main className="max-w-2xl mx-auto px-4 pb-24 pt-4">
+          <main className="max-w-2xl mx-auto px-4 pb-24 pt-4 md-mobile-pad-bottom">
             {tab === "log" && (
               <div className="space-y-6">
                 <LogMatch
@@ -2025,7 +2032,7 @@ export default function App() {
           />
           <button
             onClick={() => setThemeOpen(true)}
-            className="fixed bottom-5 right-5 z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)]"
+            className="fixed right-5 md-safe-float z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)] md-touch-target"
           >
             <span className="inline-flex items-center gap-2"><Settings size={16} /> Temas</span>
           </button>
@@ -2368,7 +2375,7 @@ function Tabs({ tab, setTab, unreadChat = 0 }) {
           <button
             key={it.id}
             onClick={() => setTab(it.id)}
-            className={`md-tab md-tab-swipe relative flex items-center justify-center gap-1.5 py-2.5 rounded-md font-oswald text-xs tracking-wide ${tab === it.id ? "active" : ""}`}
+            className={`md-tab md-tab-swipe md-touch-target relative flex items-center justify-center gap-1.5 py-2.5 rounded-md font-oswald text-xs tracking-wide ${tab === it.id ? "active" : ""}`}
           >
             {it.icon}
             {it.label.toUpperCase()}
@@ -2407,14 +2414,14 @@ function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, is
         <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">GERENCIAR USUÁRIOS</h3>
         <p className="text-sm md-text-muted mb-3">Adicione ou remova participantes do grupo a qualquer momento.</p>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input
             value={newPlayer}
             onChange={(e) => setNewPlayer(e.target.value)}
             placeholder="Nome do usuário"
             className="md-input flex-1 rounded-lg px-3 py-2 text-sm"
           />
-          <button onClick={addPlayer} className="md-btn-amber px-3 rounded-lg font-oswald text-xs">
+          <button onClick={addPlayer} className="md-btn-amber px-3 rounded-lg font-oswald text-xs md-touch-target">
             ADICIONAR
           </button>
         </div>
@@ -2503,7 +2510,7 @@ function ChatRoom({ messages, myName, players, onSendMessage }) {
           <span className="text-xs md-text-muted">Mensagens em tempo real</span>
         </div>
 
-        <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-[45dvh] sm:max-h-[420px] overflow-y-auto pr-1 md-scroll-y">
           {messages.length === 0 && <p className="md-text-muted text-sm">Nenhuma mensagem ainda. Comece a conversa.</p>}
           {messages.map((message) => {
             const mine = message.from === myName;
@@ -2544,7 +2551,7 @@ function ChatRoom({ messages, myName, players, onSendMessage }) {
           onChange={handleMediaChange}
           className="hidden"
         />
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -2554,10 +2561,10 @@ function ChatRoom({ messages, myName, players, onSendMessage }) {
             placeholder="Escreva uma mensagem para o grupo"
             className="md-input flex-1 rounded-lg px-3 py-2 text-sm"
           />
-          <button onClick={pickMedia} className="md-step-btn px-3 rounded-lg font-oswald text-xs flex items-center gap-1">
+          <button onClick={pickMedia} className="md-step-btn px-3 rounded-lg font-oswald text-xs flex items-center justify-center gap-1 md-touch-target">
             <ImagePlus size={13} /> FOTO/GIF
           </button>
-          <button onClick={submit} className="md-btn-amber px-4 rounded-lg font-oswald text-xs flex items-center gap-2">
+          <button onClick={submit} className="md-btn-amber px-4 rounded-lg font-oswald text-xs flex items-center justify-center gap-2 md-touch-target">
             <Send size={13} />
             ENVIAR
           </button>
@@ -2747,12 +2754,12 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
                     )}
                   </div>
 
-                  <div className="flex gap-2">
-                    <button onClick={() => startEdit(match)} className="md-btn-amber flex-1 rounded-lg py-2 text-xs font-oswald">EDITAR</button>
-                    <button onClick={() => shareMatch(match)} className="md-step-btn flex-1 rounded-lg py-2 text-xs font-oswald flex items-center justify-center gap-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button onClick={() => startEdit(match)} className="md-btn-amber rounded-lg py-2 text-xs font-oswald md-touch-target">EDITAR</button>
+                    <button onClick={() => shareMatch(match)} className="md-step-btn rounded-lg py-2 text-xs font-oswald flex items-center justify-center gap-1 md-touch-target">
                       <Share2 size={12} /> PARTILHAR
                     </button>
-                    <button onClick={() => onDeleteMatch(match.id)} className="md-step-btn-danger flex-1 rounded-lg py-2 text-xs font-oswald">APAGAR</button>
+                    <button onClick={() => onDeleteMatch(match.id)} className="md-step-btn-danger rounded-lg py-2 text-xs font-oswald md-touch-target">APAGAR</button>
                   </div>
                 </>
               )}
