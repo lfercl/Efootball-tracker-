@@ -10,6 +10,184 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID?: string;
 }
 
+// Color settings panel (placed at module end so it can use helpers)
+function ColorSettings({ open, onClose }) {
+  const [vals, setVals] = useState({
+    "md-bg-stadium": "#071A14",
+    "md-bg-panel": "#0F3D2A",
+    "md-bg-panel-dark": "#0B2A1E",
+    "md-bg-amber": "#FFB627",
+    "md-bg-crimson": "#E4572E",
+    "md-text-bone": "#FFFFFF",
+    "md-text-amber": "#FFC85C",
+    "md-text-crimson": "#FF7A57",
+    "md-border-line": "#2E7A52",
+  });
+
+  const PRESETS = {
+    "Padrão": {
+      "md-bg-stadium": "#071A14",
+      "md-bg-panel": "#0F3D2A",
+      "md-bg-panel-dark": "#0B2A1E",
+      "md-bg-amber": "#FFB627",
+      "md-bg-crimson": "#E4572E",
+      "md-text-bone": "#FFFFFF",
+      "md-text-amber": "#FFC85C",
+      "md-text-crimson": "#FF7A57",
+      "md-border-line": "#2E7A52",
+    },
+    "Escuro": {
+      "md-bg-stadium": "#05060A",
+      "md-bg-panel": "#0A1B2B",
+      "md-bg-panel-dark": "#041018",
+      "md-bg-amber": "#FFB627",
+      "md-bg-crimson": "#D94A3A",
+      "md-text-bone": "#E7EEF6",
+      "md-text-amber": "#FFD98B",
+      "md-text-crimson": "#FF8A72",
+      "md-border-line": "#184E3A",
+    },
+    "Claro": {
+      "md-bg-stadium": "#F7FAFC",
+      "md-bg-panel": "#FFFFFF",
+      "md-bg-panel-dark": "#F1F5F9",
+      "md-bg-amber": "#FFB627",
+      "md-bg-crimson": "#E4572E",
+      "md-text-bone": "#071A14",
+      "md-text-amber": "#B86A00",
+      "md-text-crimson": "#9B2B1A",
+      "md-border-line": "#CBD5C4",
+    },
+    "Azul": {
+      "md-bg-stadium": "#001427",
+      "md-bg-panel": "#022F44",
+      "md-bg-panel-dark": "#01202A",
+      "md-bg-amber": "#3FB0FF",
+      "md-bg-crimson": "#FF6B6B",
+      "md-text-bone": "#E6F7FF",
+      "md-text-amber": "#9EE6FF",
+      "md-text-crimson": "#FFDADA",
+      "md-border-line": "#1E6F8F",
+    },
+    "Floresta": {
+      "md-bg-stadium": "#071A14",
+      "md-bg-panel": "#0A3220",
+      "md-bg-panel-dark": "#062916",
+      "md-bg-amber": "#9BD58B",
+      "md-bg-crimson": "#E4572E",
+      "md-text-bone": "#ECF7EE",
+      "md-text-amber": "#BCE7A8",
+      "md-text-crimson": "#FFBC9A",
+      "md-border-line": "#325D44",
+    },
+    "Roxo": {
+      "md-bg-stadium": "#120622",
+      "md-bg-panel": "#2A1640",
+      "md-bg-panel-dark": "#191025",
+      "md-bg-amber": "#C084FC",
+      "md-bg-crimson": "#FB7185",
+      "md-text-bone": "#F8F6FF",
+      "md-text-amber": "#E9D5FF",
+      "md-text-crimson": "#FFCCD5",
+      "md-border-line": "#5B2E6E",
+    },
+    "Alto Contraste": {
+      "md-bg-stadium": "#000000",
+      "md-bg-panel": "#111111",
+      "md-bg-panel-dark": "#0B0B0B",
+      "md-bg-amber": "#FFFFFF",
+      "md-bg-crimson": "#FFFFFF",
+      "md-text-bone": "#FFFFFF",
+      "md-text-amber": "#FFFFFF",
+      "md-text-crimson": "#FFFFFF",
+      "md-border-line": "#FFFFFF",
+    },
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await storageGet("theme-colors", false);
+        if (raw) {
+          setVals(JSON.parse(raw));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const update = (k, v) => setVals((s) => ({ ...s, [k]: v }));
+
+  const save = async () => {
+    await storageSet("theme-colors", JSON.stringify(vals), false);
+    applyTheme(vals);
+    onClose();
+  };
+
+  const applyPreset = (p) => {
+    setVals(p);
+    applyTheme(p);
+  };
+
+  const reset = () => {
+    const def = {
+      "md-bg-stadium": "#071A14",
+      "md-bg-panel": "#0F3D2A",
+      "md-bg-panel-dark": "#0B2A1E",
+      "md-bg-amber": "#FFB627",
+      "md-bg-crimson": "#E4572E",
+      "md-text-bone": "#FFFFFF",
+      "md-text-amber": "#FFC85C",
+      "md-text-crimson": "#FF7A57",
+      "md-border-line": "#2E7A52",
+    };
+    setVals(def);
+    applyTheme(def);
+    storageSet("theme-colors", JSON.stringify(def), false);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white/5 rounded-xl p-4 md-border md-border-line">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-oswald text-lg md-text-bone">Configurar cores</h3>
+          <div className="flex gap-2">
+            <button onClick={reset} className="md-step-btn px-3 py-1 rounded-md">Reset</button>
+            <button onClick={onClose} className="md-step-btn px-3 py-1 rounded-md">Fechar</button>
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <p className="text-sm md-text-muted mb-2">Temas prontos</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(PRESETS).map(([name, p]) => (
+              <button key={name} onClick={() => applyPreset(p)} className="md-step-btn px-3 py-1 rounded-md text-sm">
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {Object.keys(vals).map((k) => (
+            <div key={k} className="flex items-center gap-2">
+              <label className="text-sm md-text-muted flex-1">{k}</label>
+              <input type="color" value={vals[k]} onChange={(e) => update(k, e.target.value)} />
+              <input className="md-input ml-2" value={vals[k]} onChange={(e) => update(k, e.target.value)} style={{ width: 96 }} />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={save} className="md-btn-amber px-4 py-2 rounded-md">Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
@@ -32,6 +210,7 @@ import {
   UserPlus,
   BarChart3,
   Users,
+  Settings,
 } from "lucide-react";
 
 /* ============================================================
@@ -155,6 +334,38 @@ function GlobalStyle() {
       }
     `}</style>
   );
+}
+
+// apply theme by injecting CSS variables and override rules (module scope)
+function applyTheme(vars) {
+  try {
+    const root = document.documentElement;
+    Object.entries(vars || {}).forEach(([k, v]) => {
+      root.style.setProperty(`--${k}`, v || "");
+    });
+
+    const id = "theme-overrides";
+    let el = document.getElementById(id);
+    const css = `
+      .md-bg-stadium{ background: var(--md-bg-stadium, #071A14) !important; }
+      .md-bg-panel{ background: var(--md-bg-panel, #0F3D2A) !important; }
+      .md-bg-panel-dark{ background: var(--md-bg-panel-dark, #0B2A1E) !important; }
+      .md-bg-amber{ background: var(--md-bg-amber, #FFB627) !important; }
+      .md-bg-crimson{ background: var(--md-bg-crimson, #E4572E) !important; }
+      .md-text-bone{ color: var(--md-text-bone, #FFFFFF) !important; }
+      .md-text-amber{ color: var(--md-text-amber, #FFC85C) !important; }
+      .md-text-crimson{ color: var(--md-text-crimson, #FF7A57) !important; }
+      .md-border-line{ border-color: var(--md-border-line, #2E7A52) !important; }
+    `;
+    if (!el) {
+      el = document.createElement("style");
+      el.id = id;
+      document.head.appendChild(el);
+    }
+    el.innerHTML = css;
+  } catch (e) {
+    console.error("applyTheme", e);
+  }
 }
 
 const env = ((import.meta as unknown) as { env: Record<string, string | undefined> }).env;
@@ -361,6 +572,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [unread, setUnread] = useState(0);
   const [feedOpen, setFeedOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
 
   const lastSeenCount = useRef(0);
   const pollRef = useRef(null);
@@ -391,7 +603,20 @@ export default function App() {
         setPhase("join");
       }
     })();
+
+    // load theme from localStorage
+    (async () => {
+      try {
+        const raw = await storageGet("theme-colors", false);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          applyTheme(parsed);
+        }
+      } catch {}
+    })();
   }, []);
+
+  
 
   useEffect(() => {
     if (phase !== "app" || !groupCode) return;
@@ -543,7 +768,14 @@ export default function App() {
   };
 
   const handleEditMatch = async (matchId, updatedMatch) => {
-    const nextMatches = (groupData?.matches || []).map((m) => (m.id === matchId ? { ...m, ...updatedMatch } : m));
+    // ensure updated match stores the winner on the left (playerA)
+    let { playerA, playerB, scoreA, scoreB } = updatedMatch;
+    if (typeof scoreA === 'number' && typeof scoreB === 'number' && scoreB > scoreA) {
+      [playerA, playerB] = [playerB, playerA];
+      [scoreA, scoreB] = [scoreB, scoreA];
+    }
+    const norm = { ...updatedMatch, playerA, playerB, scoreA, scoreB };
+    const nextMatches = (groupData?.matches || []).map((m) => (m.id === matchId ? { ...m, ...norm } : m));
     const data = {
       ...groupData,
       matches: nextMatches,
@@ -588,6 +820,7 @@ export default function App() {
               setFeedOpen((v) => !v);
               setUnread(0);
             }}
+            onThemeToggle={() => setThemeOpen((v) => !v)}
             onLeave={handleLeaveGroup}
           />
 
@@ -601,25 +834,31 @@ export default function App() {
 
           <main className="max-w-2xl mx-auto px-4 pb-24 pt-4">
             {tab === "log" && (
-              <LogMatch
-                players={groupData?.players || []}
-                myName={myName}
-                onAddPlayer={handleAddPlayer}
-                onDeletePlayer={handleDeletePlayer}
-                onSubmit={async (match) => {
-                  const entry = { id: genId(), ...match, recordedBy: myName, ts: Date.now() };
-                  const data = { ...groupData, matches: [...groupData.matches, entry] };
-                  lastSeenCount.current = data.matches.length;
-                  await saveGroup(data);
-                }}
-              />
-            )}
-            {tab === "users" && (
-              <UserManagement
-                players={groupData?.players || []}
-                onAddPlayer={handleAddPlayer}
-                onDeletePlayer={handleDeletePlayer}
-              />
+              <div className="space-y-6">
+                <LogMatch
+                  players={groupData?.players || []}
+                  myName={myName}
+                  onAddPlayer={handleAddPlayer}
+                  onDeletePlayer={handleDeletePlayer}
+                  onSubmit={async (match) => {
+                    let { playerA, playerB, scoreA, scoreB } = match;
+                    // normalize so the winner (higher score) is always playerA (left side)
+                    if (scoreB > scoreA) {
+                      [playerA, playerB] = [playerB, playerA];
+                      [scoreA, scoreB] = [scoreB, scoreA];
+                    }
+                    const entry = { id: genId(), playerA, playerB, scoreA, scoreB, recordedBy: myName, ts: Date.now() };
+                    const data = { ...groupData, matches: [...groupData.matches, entry] };
+                    lastSeenCount.current = data.matches.length;
+                    await saveGroup(data);
+                  }}
+                />
+                <UserManagement
+                  players={groupData?.players || []}
+                  onAddPlayer={handleAddPlayer}
+                  onDeletePlayer={handleDeletePlayer}
+                />
+              </div>
             )}
             {tab === "results" && (
               <ResultsManagement
@@ -637,6 +876,7 @@ export default function App() {
             )}
           </main>
 
+          <ColorSettings open={themeOpen} onClose={() => setThemeOpen(false)} />
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
             {toasts.map((t) => (
               <Toast key={t.id} toast={t} onClose={() => closeToast(t.id)} />
@@ -764,7 +1004,7 @@ function JoinScreen({ defaultName, onCreate, onJoin }) {
 
 /* ---------------- Header ---------------- */
 
-function Header({ groupName, groupCode, unread, onBell, onLeave }) {
+function Header({ groupName, groupCode, unread, onBell, onLeave, onThemeToggle }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -787,6 +1027,9 @@ function Header({ groupName, groupCode, unread, onBell, onLeave }) {
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          <button onClick={onThemeToggle} className="md-icon-btn p-2 rounded-full mr-1">
+            <Settings size={16} className="md-text-muted" />
+          </button>
           <button onClick={onBell} className="md-icon-btn relative p-2 rounded-full">
             <Bell size={18} className="md-text-bone" />
             {unread > 0 && (
@@ -811,11 +1054,18 @@ function Ticker({ matches }) {
   return (
     <div className="md-bg-panel border-b md-border-line overflow-hidden py-1.5">
       <div className="flex gap-8 whitespace-nowrap md-anim-marquee" style={{ width: "max-content" }}>
-        {items.map((m, i) => (
-          <span key={i} className="font-oswald text-sm tracking-wide md-text-muted">
-            {m.playerA} <span className="md-text-amber">{m.scoreA}-{m.scoreB}</span> {m.playerB}
-          </span>
-        ))}
+        {items.map((m, i) => {
+          const isDraw = m.scoreA === m.scoreB;
+          const winner = isDraw ? m.playerA : (m.scoreA > m.scoreB ? m.playerA : m.playerB);
+          const loser = isDraw ? m.playerB : (m.scoreA > m.scoreB ? m.playerB : m.playerA);
+          const winnerScore = Math.max(m.scoreA, m.scoreB);
+          const loserScore = Math.min(m.scoreA, m.scoreB);
+          return (
+            <span key={i} className="font-oswald text-sm tracking-wide md-text-muted">
+              {winner} <span className="md-text-amber">{winnerScore}-{loserScore}</span> {loser}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -835,16 +1085,23 @@ function ActivityFeed({ matches, onClose }) {
         </div>
         {list.length === 0 && <p className="md-text-muted text-sm">Nenhuma partida registrada ainda.</p>}
         <div className="space-y-2">
-          {list.map((m) => (
-            <div key={m.id} className="md-bg-panel md-border md-border-line rounded-lg px-3 py-2">
-              <p className="font-oswald text-sm md-text-bone">
-                {m.playerA} <span className="md-text-amber">{m.scoreA}-{m.scoreB}</span> {m.playerB}
-              </p>
-              <p className="text-xs md-text-muted mt-0.5">
-                registrado por {m.recordedBy} · {new Date(m.ts).toLocaleString("pt-BR")}
-              </p>
-            </div>
-          ))}
+          {list.map((m) => {
+            const isDraw = m.scoreA === m.scoreB;
+            const winner = isDraw ? m.playerA : (m.scoreA > m.scoreB ? m.playerA : m.playerB);
+            const loser = isDraw ? m.playerB : (m.scoreA > m.scoreB ? m.playerB : m.playerA);
+            const winnerScore = Math.max(m.scoreA, m.scoreB);
+            const loserScore = Math.min(m.scoreA, m.scoreB);
+            return (
+              <div key={m.id} className="md-bg-panel md-border md-border-line rounded-lg px-3 py-2">
+                <p className="font-oswald text-sm md-text-bone">
+                  {winner} <span className="md-text-amber">{winnerScore}-{loserScore}</span> {loser}
+                </p>
+                <p className="text-xs md-text-muted mt-0.5">
+                  registrado por {m.recordedBy} · {new Date(m.ts).toLocaleString("pt-BR")}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -857,7 +1114,6 @@ function Tabs({ tab, setTab }) {
   const items = [
     { id: "log", label: "Registrar", icon: <Plus size={15} /> },
     { id: "results", label: "Resultados", icon: <Trophy size={15} /> },
-    { id: "users", label: "Usuários", icon: <Users size={15} /> },
     { id: "standings", label: "Classificação", icon: <BarChart3 size={15} /> },
     { id: "h2h", label: "Confronto", icon: <Swords size={15} /> },
   ];
@@ -986,12 +1242,21 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch }) {
                     <button onClick={() => setEditingId(null)} className="md-step-btn-danger flex-1 rounded-lg py-2 text-xs font-oswald">CANCELAR</button>
                   </div>
                 </div>
-              ) : (
+                  ) : (
                 <>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-oswald text-sm md-text-bone">
-                      {match.playerA} <span className="md-text-amber">{match.scoreA}-{match.scoreB}</span> {match.playerB}
-                    </span>
+                    {(() => {
+                      const isDraw = match.scoreA === match.scoreB;
+                      const winner = isDraw ? match.playerA : (match.scoreA > match.scoreB ? match.playerA : match.playerB);
+                      const loser = isDraw ? match.playerB : (match.scoreA > match.scoreB ? match.playerB : match.playerA);
+                      const winnerScore = Math.max(match.scoreA, match.scoreB);
+                      const loserScore = Math.min(match.scoreA, match.scoreB);
+                      return (
+                        <span className="font-oswald text-sm md-text-bone">
+                          {winner} <span className="md-text-amber">{winnerScore}-{loserScore}</span> {loser}
+                        </span>
+                      );
+                    })()}
                     <span className="text-xs md-text-muted-dim">{new Date(match.ts).toLocaleDateString("pt-BR")}</span>
                   </div>
                   <div className="flex gap-2">
@@ -1319,73 +1584,142 @@ function Standings({ players, matches }) {
 /* ---------------- Head to Head ---------------- */
 
 function HeadToHead({ players, matches }) {
-  const [pa, setPa] = useState("");
-  const [pb, setPb] = useState("");
-  const options = players.map((p) => p.name);
-
-  useEffect(() => {
-    if (!pa && options[0]) setPa(options[0]);
-    if (!pb && options[1]) setPb(options[1]);
-  }, [options.length]);
-
-  const relevant = matches.filter(
-    (m) => (m.playerA === pa && m.playerB === pb) || (m.playerA === pb && m.playerB === pa)
-  );
-
-  let aw = 0,
-    bw = 0,
-    dr = 0;
-  relevant.forEach((m) => {
-    const aScore = m.playerA === pa ? m.scoreA : m.scoreB;
-    const bScore = m.playerA === pa ? m.scoreB : m.scoreA;
-    if (aScore > bScore) aw++;
-    else if (bScore > aScore) bw++;
-    else dr++;
-  });
+  const [expanded, setExpanded] = useState(null);
 
   if (players.length < 2) {
     return <p className="md-text-muted text-sm text-center py-10">Adicione pelo menos 2 jogadores.</p>;
   }
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3">
-        <PlayerSelect label="Jogador A" value={pa} onChange={setPa} options={options} />
-        <PlayerSelect label="Jogador B" value={pb} onChange={setPb} options={options} />
-      </div>
-
-      {pa && pb && pa !== pb && (
-        <>
-          <div className="flex items-center justify-around md-bg-panel md-border md-border-line rounded-xl py-6">
-            <div className="text-center">
-              <p className="font-oswald text-3xl md-text-amber">{aw}</p>
-              <p className="text-sm md-text-muted mt-1">{pa}</p>
-            </div>
-            <div className="text-center">
-              <p className="font-oswald text-3xl md-text-muted">{dr}</p>
-              <p className="text-sm md-text-muted mt-1">empates</p>
-            </div>
-            <div className="text-center">
-              <p className="font-oswald text-3xl md-text-crimson">{bw}</p>
-              <p className="text-sm md-text-muted mt-1">{pb}</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {[...relevant].reverse().map((m) => (
-              <div key={m.id} className="md-bg-panel md-border md-border-line rounded-lg px-3 py-2 flex items-center justify-between">
-                <span className="font-oswald text-sm md-text-bone">
-                  {m.playerA} <span className="md-text-amber">{m.scoreA}-{m.scoreB}</span> {m.playerB}
-                </span>
-                <span className="text-xs md-text-muted-dim">{new Date(m.ts).toLocaleDateString("pt-BR")}</span>
+    <div className="space-y-3">
+      {players.map((player) => {
+        const opponents = players.filter((p) => p.name !== player.name);
+        return (
+          <div key={player.name} className="overflow-hidden rounded-xl md-bg-panel md-border md-border-line">
+            <button
+              type="button"
+              onClick={() => setExpanded(expanded === player.name ? null : player.name)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+            >
+              <div>
+                <p className="font-oswald text-sm md-text-bone">{player.name}</p>
+                <p className="text-xs md-text-muted mt-1">Ver todos os confrontos</p>
               </div>
-            ))}
-            {relevant.length === 0 && (
-              <p className="md-text-muted text-sm text-center py-6">Ainda não há partidas entre eles.</p>
+              <span className="text-xs md-text-amber">{expanded === player.name ? "FECHAR" : "ABRIR"}</span>
+            </button>
+
+            {expanded === player.name && (
+              <div className="border-t border-white/10 p-3 space-y-2">
+                <div className="overflow-hidden rounded-lg border border-white/10 md-bg-panel-dark-40">
+                  <table className="min-w-full text-sm">
+                    <thead className="md-bg-panel-dark-40">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">OPONENTE</th>
+                        <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-amber">V</th>
+                        <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-muted">E</th>
+                        <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-crimson">D</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {opponents.map((opponent) => {
+                        const list = matches.filter(
+                          (m) =>
+                            (m.playerA === player.name && m.playerB === opponent.name) ||
+                            (m.playerA === opponent.name && m.playerB === player.name)
+                        );
+                        const stats = { wins: 0, draws: 0, losses: 0 };
+                        list.forEach((m) => {
+                          const isPlayerA = m.playerA === player.name;
+                          const scoreForPlayer = isPlayerA ? m.scoreA : m.scoreB;
+                          const scoreAgainst = isPlayerA ? m.scoreB : m.scoreA;
+                          if (scoreForPlayer > scoreAgainst) stats.wins++;
+                          else if (scoreForPlayer < scoreAgainst) stats.losses++;
+                          else stats.draws++;
+                        });
+
+                        return (
+                          <tr key={opponent.name} className="border-t border-white/10">
+                            <td className="px-3 py-2 font-oswald md-text-bone">{opponent.name}</td>
+                            <td className="px-3 py-2 text-center font-oswald md-text-amber">{stats.wins}</td>
+                            <td className="px-3 py-2 text-center font-oswald md-text-muted">{stats.draws}</td>
+                            <td className="px-3 py-2 text-center font-oswald md-text-crimson">{stats.losses}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {opponents.map((opponent) => {
+                  const list = matches.filter(
+                    (m) =>
+                      (m.playerA === player.name && m.playerB === opponent.name) ||
+                      (m.playerA === opponent.name && m.playerB === player.name)
+                  );
+                  const stats = { wins: 0, draws: 0, losses: 0 };
+                  list.forEach((m) => {
+                    const isPlayerA = m.playerA === player.name;
+                    const scoreForPlayer = isPlayerA ? m.scoreA : m.scoreB;
+                    const scoreAgainst = isPlayerA ? m.scoreB : m.scoreA;
+                    if (scoreForPlayer > scoreAgainst) stats.wins++;
+                    else if (scoreForPlayer < scoreAgainst) stats.losses++;
+                    else stats.draws++;
+                  });
+
+                  return (
+                    <div key={opponent.name} className="rounded-lg border border-white/10 md-bg-panel-dark-40">
+                      <div className="flex items-center justify-between px-3 py-2.5 text-left">
+                        <div className="flex-1">
+                          <p className="font-oswald text-sm md-text-bone">{player.name} vs {opponent.name}</p>
+                          <div className="flex flex-wrap gap-2 mt-1.5">
+                            <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-oswald tracking-wide md-text-amber">V {stats.wins}</span>
+                            <span className="rounded-full border border-slate-300/25 bg-slate-300/10 px-2 py-0.5 text-[10px] font-oswald tracking-wide md-text-muted">E {stats.draws}</span>
+                            <span className="rounded-full border border-crimson-400/30 bg-crimson-500/10 px-2 py-0.5 text-[10px] font-oswald tracking-wide md-text-crimson">D {stats.losses}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-white/10">
+                        {list.length > 0 ? (
+                          <table className="min-w-full text-sm">
+                            <thead className="md-bg-panel-dark-40">
+                              <tr>
+                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DATA</th>
+                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">VENCEDOR</th>
+                                  <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-muted">PLACAR</th>
+                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DERROTADO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                              {[...list].reverse().map((m) => {
+                                const isDraw = m.scoreA === m.scoreB;
+                                const winner = isDraw ? m.playerA : (m.scoreA > m.scoreB ? m.playerA : m.playerB);
+                                const loser = isDraw ? m.playerB : (m.scoreA > m.scoreB ? m.playerB : m.playerA);
+                                const winnerScore = Math.max(m.scoreA, m.scoreB);
+                                const loserScore = Math.min(m.scoreA, m.scoreB);
+                                return (
+                                  <tr key={m.id} className="border-t border-white/10">
+                                    <td className="px-3 py-2 text-xs md-text-muted-dim">{new Date(m.ts).toLocaleDateString("pt-BR")}</td>
+                                    <td className="px-3 py-2 font-oswald md-text-bone">{winner}</td>
+                                    <td className="px-3 py-2 text-center font-oswald md-text-amber">{winnerScore}-{loserScore}</td>
+                                    <td className="px-3 py-2 font-oswald md-text-bone">{loser}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="px-3 py-3 text-xs md-text-muted">Nenhum resultado registrado ainda para este confronto.</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
-        </>
-      )}
+        );
+      })}
     </div>
   );
 }
