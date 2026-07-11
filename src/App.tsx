@@ -1,6 +1,20 @@
 import React, { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
+
+interface ImportMetaEnv {
+  readonly VITE_FIREBASE_API_KEY?: string;
+  readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
+  readonly VITE_FIREBASE_PROJECT_ID?: string;
+  readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
+  readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
+  readonly VITE_FIREBASE_APP_ID?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getAuth } from "firebase/auth";;
 import {
   Trophy,
   Swords,
@@ -17,6 +31,7 @@ import {
   LogOut,
   UserPlus,
   BarChart3,
+  Users,
 } from "lucide-react";
 
 /* ============================================================
@@ -109,6 +124,12 @@ function GlobalStyle() {
       @keyframes mdBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
       @keyframes mdMarquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
       @keyframes mdPulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+      @keyframes mdGoalShot { 0% { transform: translateX(-180px) translateY(0px) scale(0.55); opacity:0; } 12% { opacity:1; } 45% { transform: translateX(60px) translateY(-80px) scale(1.25); } 80% { transform: translateX(170px) translateY(24px) scale(1.08); opacity:1; } 100% { transform: translateX(240px) translateY(10px) scale(1.02); opacity:0; } }
+      @keyframes mdGoalBurst { 0% { transform: scale(0.45); opacity:0; } 30% { transform: scale(1.25); opacity:1; } 70% { transform: scale(1.7); opacity:1; } 100% { transform: scale(2.3); opacity:0; } }
+      @keyframes mdGoalGlow { 0% { transform: scale(0.4); opacity:0; } 30% { transform: scale(1.1); opacity:1; } 70% { transform: scale(1.55); opacity:1; } 100% { transform: scale(2.1); opacity:0; } }
+      @keyframes mdGoalText { 0% { transform: translateY(6px) scale(0.9); opacity:0; } 35% { opacity:1; } 100% { transform: translateY(-12px) scale(1.05); opacity:0; } }
+      @keyframes mdResultRise { 0% { transform: translateY(20px) scale(0.9); opacity:0; } 100% { transform: translateY(0) scale(1); opacity:1; } }
+      @keyframes mdCardPop { 0% { transform: translateY(14px) scale(0.95); opacity:0; } 60% { transform: translateY(-2px) scale(1.02); opacity:1; } 100% { transform: translateY(0) scale(1); opacity:1; } }
 
       .md-anim-slideIn{ animation: mdSlideIn 0.35s ease-out; }
       .md-anim-slideInDrawer{ animation: mdSlideIn 0.25s ease-out; }
@@ -117,6 +138,12 @@ function GlobalStyle() {
       .md-anim-bounce{ animation: mdBounce 0.6s ease; }
       .md-anim-marquee{ animation: mdMarquee 28s linear infinite; }
       .md-anim-pulse{ animation: mdPulse 1.4s ease-in-out infinite; }
+      .md-anim-goal-shot{ animation: mdGoalShot 1.2s ease-in-out forwards; }
+      .md-anim-goal-burst{ animation: mdGoalBurst 0.9s ease-out forwards; }
+      .md-anim-goal-glow{ animation: mdGoalGlow 0.9s ease-out forwards; }
+      .md-anim-goal-text{ animation: mdGoalText 0.95s ease-out forwards; }
+      .md-anim-result-rise{ animation: mdResultRise 0.45s ease-out forwards; }
+      .md-anim-card-pop{ animation: mdCardPop 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
 
       @media (prefers-reduced-motion: reduce) {
         .md-anim-slideIn, .md-anim-slideInDrawer, .md-anim-popIn, .md-anim-shake,
@@ -129,17 +156,38 @@ function GlobalStyle() {
   );
 }
 
+const env = ((import.meta as unknown) as { env: Record<string, string | undefined> }).env;
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
 };
 
-const firebaseReady = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
-const db = firebaseReady ? getFirestore(initializeApp(firebaseConfig)) : null;
+console.log("API KEY LIDA:", firebaseConfig.apiKey);
+
+const firebaseReady = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.projectId &&
+  firebaseConfig.authDomain
+);
+
+const firebaseApp = firebaseReady
+  ? initializeApp(firebaseConfig)
+  : null;
+
+const db = firebaseApp
+  ? getFirestore(firebaseApp)
+  : null;
+
+const auth = firebaseApp
+  ? getAuth(firebaseApp)
+  : null;
+
+const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 
 /* ---------------- storage helpers (defensive: shared storage on
    this platform has been flaky, so every call is wrapped and the
@@ -255,17 +303,45 @@ function Toast({ toast, onClose }) {
 
 /* ---------------- Result badge (win/draw/loss pulse) ---------------- */
 
-function ResultPulse({ result }) {
+function ResultPulse({ result, winner, loser }) {
   const map = {
     win: { cls: "md-text-amber", label: "VITÓRIA", icon: <TrendingUp size={26} />, anim: "md-anim-bounce" },
     draw: { cls: "md-text-muted", label: "EMPATE", icon: <Shield size={26} />, anim: "md-anim-bounce" },
     loss: { cls: "md-text-crimson", label: "DERROTA", icon: <TrendingDown size={26} />, anim: "md-anim-shake" },
   };
   const cfg = map[result];
+
   return (
-    <div className={`flex flex-col items-center justify-center gap-1 md-anim-popIn ${cfg.cls}`}>
-      <div className={cfg.anim}>{cfg.icon}</div>
-      <span className="font-oswald text-sm md-tracking-sm">{cfg.label}</span>
+    <div className={`w-full flex flex-col items-center justify-center gap-3 md-anim-popIn ${cfg.cls}`}>
+      <div className="relative flex items-center justify-center w-full min-h-32 overflow-visible">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute h-24 w-24 rounded-full border-4 border-amber-200/60 md-anim-goal-glow" />
+          <div className="absolute h-20 w-20 rounded-full border-4 border-amber-300/70 md-anim-goal-glow" style={{ animationDelay: "0.08s" }} />
+          <div className="md-anim-goal-burst rounded-full w-16 h-16 md-bg-amber" style={{ boxShadow: "0 0 32px rgba(255,182,39,0.95)" }} />
+        </div>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md-anim-goal-shot z-20">
+          <div className="w-9 h-9 rounded-full md-bg-amber border-2 border-white" style={{ boxShadow: "0 0 26px rgba(255,182,39,1)" }} />
+        </div>
+        <div className="absolute top-3 md-anim-goal-text font-oswald text-[11px] md-tracking-lg md-text-amber">GOOOL!</div>
+        <div className={`md-anim-result-rise flex flex-col items-center gap-1 z-30 ${cfg.cls}`}>
+          <div className={cfg.anim}>{cfg.icon}</div>
+          <span className="font-oswald text-sm md-tracking-sm">{cfg.label}</span>
+        </div>
+      </div>
+
+      {result === "win" && winner && (
+        <div className="md-anim-card-pop rounded-xl border border-amber-300/40 md-bg-amber-15 px-4 py-2 text-center">
+          <p className="font-oswald text-sm md-text-amber">{winner}</p>
+          <p className="text-xs md-text-muted">venceu a partida</p>
+        </div>
+      )}
+
+      {result === "loss" && loser && (
+        <div className="md-anim-card-pop rounded-xl border border-crimson-400/40 md-bg-crimson-20 px-4 py-2 text-center">
+          <p className="font-oswald text-sm md-text-crimson">{loser}</p>
+          <p className="text-xs md-text-muted">perdeu a partida</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -353,16 +429,22 @@ export default function App() {
     await storageSet(`group:${groupCode}`, JSON.stringify(data), true);
   };
 
+  const normalizeName = (value) => (value || "").trim().toLowerCase();
+
+  const isDuplicatePlayerName = (players, candidate) =>
+    players.some((p) => normalizeName(p.name) === normalizeName(candidate));
+
   const handleCreateGroup = async (name, groupName) => {
+    const trimmedName = name.trim();
     const code = genCode();
     const data = {
       name: groupName || "Meu Grupo",
-      players: [{ id: genId(), name }],
+      players: [{ id: genId(), name: trimmedName }],
       matches: [],
     };
-    setMyName(name);
+    setMyName(trimmedName);
     setGroupCode(code);
-    await storageSet("my-name", name, false);
+    await storageSet("my-name", trimmedName, false);
     await storageSet("my-group", code, false);
     await storageSet(`group:${code}`, JSON.stringify(data), true);
     setGroupData(data);
@@ -371,6 +453,7 @@ export default function App() {
   };
 
   const handleJoinGroup = async (name, code) => {
+    const trimmedName = name.trim();
     const upper = code.trim().toUpperCase();
     const raw = await storageGet(`group:${upper}`, true);
     if (!raw) return { error: "Código não encontrado. Confira e tente novamente." };
@@ -380,18 +463,91 @@ export default function App() {
     } catch {
       return { error: "Não foi possível ler os dados do grupo." };
     }
-    if (!data.players.find((p) => p.name.toLowerCase() === name.toLowerCase())) {
-      data.players.push({ id: genId(), name });
-      await storageSet(`group:${upper}`, JSON.stringify(data), true);
+
+    const existingPlayer = data.players.find(
+      (p) => normalizeName(p.name) === normalizeName(trimmedName)
+    );
+
+    if (existingPlayer) {
+      setMyName(existingPlayer.name);
+      setGroupCode(upper);
+      await storageSet("my-name", existingPlayer.name, false);
+      await storageSet("my-group", upper, false);
+      setGroupData(data);
+      lastSeenCount.current = data.matches.length;
+      setPhase("app");
+      return { ok: true };
     }
-    setMyName(name);
+
+    data.players.push({ id: genId(), name: trimmedName });
+    await storageSet(`group:${upper}`, JSON.stringify(data), true);
+    setMyName(trimmedName);
     setGroupCode(upper);
-    await storageSet("my-name", name, false);
+    await storageSet("my-name", trimmedName, false);
     await storageSet("my-group", upper, false);
     setGroupData(data);
     lastSeenCount.current = data.matches.length;
     setPhase("app");
     return { ok: true };
+  };
+
+  const handleAddPlayer = async (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return { error: "Digite um nome para o jogador." };
+    if (isDuplicatePlayerName(groupData?.players || [], trimmed)) {
+      return { error: `O nome "${trimmed}" já existe no grupo.` };
+    }
+
+    const data = {
+      ...groupData,
+      players: [...(groupData?.players || []), { id: genId(), name: trimmed }],
+    };
+    await saveGroup(data);
+    return { ok: true };
+  };
+
+  const handleDeletePlayer = async (playerName) => {
+    const trimmed = playerName.trim();
+    if (!trimmed) return;
+
+    const confirmed = window.confirm(`Tem certeza que deseja apagar ${trimmed}?`);
+    if (!confirmed) return;
+
+    const nextPlayers = (groupData?.players || []).filter(
+      (p) => normalizeName(p.name) !== normalizeName(trimmed)
+    );
+    const nextMatches = (groupData?.matches || []).filter(
+      (m) => normalizeName(m.playerA) !== normalizeName(trimmed) && normalizeName(m.playerB) !== normalizeName(trimmed)
+    );
+
+    const data = {
+      ...groupData,
+      players: nextPlayers,
+      matches: nextMatches,
+    };
+
+    await saveGroup(data);
+  };
+
+  const handleDeleteMatch = async (matchId) => {
+    const confirmed = window.confirm("Tem certeza que deseja apagar esta partida?");
+    if (!confirmed) return;
+
+    const nextMatches = (groupData?.matches || []).filter((m) => m.id !== matchId);
+    const data = {
+      ...groupData,
+      matches: nextMatches,
+    };
+    await saveGroup(data);
+  };
+
+  const handleEditMatch = async (matchId, updatedMatch) => {
+    const nextMatches = (groupData?.matches || []).map((m) => (m.id === matchId ? { ...m, ...updatedMatch } : m));
+    const data = {
+      ...groupData,
+      matches: nextMatches,
+    };
+    await saveGroup(data);
   };
 
   const handleLeaveGroup = async () => {
@@ -447,16 +603,29 @@ export default function App() {
               <LogMatch
                 players={groupData?.players || []}
                 myName={myName}
-                onAddPlayer={async (name) => {
-                  const data = { ...groupData, players: [...groupData.players, { id: genId(), name }] };
-                  await saveGroup(data);
-                }}
+                onAddPlayer={handleAddPlayer}
+                onDeletePlayer={handleDeletePlayer}
                 onSubmit={async (match) => {
                   const entry = { id: genId(), ...match, recordedBy: myName, ts: Date.now() };
                   const data = { ...groupData, matches: [...groupData.matches, entry] };
                   lastSeenCount.current = data.matches.length;
                   await saveGroup(data);
                 }}
+              />
+            )}
+            {tab === "users" && (
+              <UserManagement
+                players={groupData?.players || []}
+                onAddPlayer={handleAddPlayer}
+                onDeletePlayer={handleDeletePlayer}
+              />
+            )}
+            {tab === "results" && (
+              <ResultsManagement
+                players={groupData?.players || []}
+                matches={groupData?.matches || []}
+                onDeleteMatch={handleDeleteMatch}
+                onEditMatch={handleEditMatch}
               />
             )}
             {tab === "standings" && (
@@ -686,6 +855,8 @@ function ActivityFeed({ matches, onClose }) {
 function Tabs({ tab, setTab }) {
   const items = [
     { id: "log", label: "Registrar", icon: <Plus size={15} /> },
+    { id: "results", label: "Resultados", icon: <Trophy size={15} /> },
+    { id: "users", label: "Usuários", icon: <Users size={15} /> },
     { id: "standings", label: "Classificação", icon: <BarChart3 size={15} /> },
     { id: "h2h", label: "Confronto", icon: <Swords size={15} /> },
   ];
@@ -707,16 +878,148 @@ function Tabs({ tab, setTab }) {
   );
 }
 
+/* ---------------- User Management ---------------- */
+
+function UserManagement({ players, onAddPlayer, onDeletePlayer }) {
+  const [newPlayer, setNewPlayer] = useState("");
+  const [error, setError] = useState("");
+
+  const addPlayer = async () => {
+    setError("");
+    const res = await onAddPlayer(newPlayer);
+    if (res?.error) {
+      setError(res.error);
+      return;
+    }
+    setNewPlayer("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">GERENCIAR USUÁRIOS</h3>
+        <p className="text-sm md-text-muted mb-3">Adicione ou remova participantes do grupo a qualquer momento.</p>
+
+        <div className="flex gap-2">
+          <input
+            value={newPlayer}
+            onChange={(e) => setNewPlayer(e.target.value)}
+            placeholder="Nome do usuário"
+            className="md-input flex-1 rounded-lg px-3 py-2 text-sm"
+          />
+          <button onClick={addPlayer} className="md-btn-amber px-3 rounded-lg font-oswald text-xs">
+            ADICIONAR
+          </button>
+        </div>
+        {error && <p className="md-text-crimson text-sm mt-2">{error}</p>}
+      </div>
+
+      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">USUÁRIOS DO GRUPO</h3>
+        <div className="space-y-2">
+          {players.length === 0 && <p className="md-text-muted text-sm">Nenhum usuário cadastrado ainda.</p>}
+          {players.map((player) => (
+            <div key={player.id} className="flex items-center justify-between rounded-lg px-3 py-2 md-bg-panel-dark-40">
+              <span>{player.name}</span>
+              <button type="button" onClick={() => onDeletePlayer(player.name)} className="text-red-400 font-bold text-sm">
+                APAGAR
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Results Management ---------------- */
+
+function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch }) {
+  const [editingId, setEditingId] = useState(null);
+  const [playerA, setPlayerA] = useState("");
+  const [playerB, setPlayerB] = useState("");
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
+
+  const startEdit = (match) => {
+    setEditingId(match.id);
+    setPlayerA(match.playerA);
+    setPlayerB(match.playerB);
+    setScoreA(match.scoreA);
+    setScoreB(match.scoreB);
+  };
+
+  const saveEdit = async () => {
+    if (!editingId) return;
+    await onEditMatch(editingId, { playerA, playerB, scoreA, scoreB });
+    setEditingId(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">RESULTADOS DO GRUPO</h3>
+        <div className="space-y-2">
+          {matches.length === 0 && <p className="md-text-muted text-sm">Nenhuma partida registrada ainda.</p>}
+          {[...matches].reverse().map((match) => (
+            <div key={match.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
+              {editingId === match.id ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={playerA} onChange={(e) => setPlayerA(e.target.value)} className="md-input rounded-lg px-2 py-2 text-sm">
+                      <option value="">Selecionar</option>
+                      {players.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+                    <select value={playerB} onChange={(e) => setPlayerB(e.target.value)} className="md-input rounded-lg px-2 py-2 text-sm">
+                      <option value="">Selecionar</option>
+                      {players.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <input type="number" min="0" value={scoreA} onChange={(e) => setScoreA(Number(e.target.value))} className="md-input w-16 rounded-lg px-2 py-2 text-center" />
+                    <span className="md-text-muted">×</span>
+                    <input type="number" min="0" value={scoreB} onChange={(e) => setScoreB(Number(e.target.value))} className="md-input w-16 rounded-lg px-2 py-2 text-center" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="md-btn-amber flex-1 rounded-lg py-2 text-xs font-oswald">SALVAR</button>
+                    <button onClick={() => setEditingId(null)} className="md-step-btn-danger flex-1 rounded-lg py-2 text-xs font-oswald">CANCELAR</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-oswald text-sm md-text-bone">
+                      {match.playerA} <span className="md-text-amber">{match.scoreA}-{match.scoreB}</span> {match.playerB}
+                    </span>
+                    <span className="text-xs md-text-muted-dim">{new Date(match.ts).toLocaleDateString("pt-BR")}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => startEdit(match)} className="md-btn-amber flex-1 rounded-lg py-2 text-xs font-oswald">EDITAR</button>
+                    <button onClick={() => onDeleteMatch(match.id)} className="md-step-btn-danger flex-1 rounded-lg py-2 text-xs font-oswald">APAGAR</button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Log Match ---------------- */
 
-function LogMatch({ players, myName, onAddPlayer, onSubmit }) {
+function LogMatch({ players, myName, onAddPlayer, onDeletePlayer, onSubmit }) {
   const [a, setA] = useState("");
   const [b, setB] = useState("");
   const [sa, setSa] = useState(0);
   const [sb, setSb] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [newPlayer, setNewPlayer] = useState("");
+  const [addError, setAddError] = useState("");
   const [result, setResult] = useState(null);
+  const [winnerName, setWinnerName] = useState("");
+  const [loserName, setLoserName] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -724,7 +1027,7 @@ function LogMatch({ players, myName, onAddPlayer, onSubmit }) {
       const mine = players.find((p) => p.name === myName);
       setA(mine ? mine.name : players[0]?.name || "");
     }
-  }, [players, myName]);
+  }, [players, myName, a]);
 
   const options = players.map((p) => p.name);
   const canSubmit = a && b && a !== b;
@@ -735,21 +1038,51 @@ function LogMatch({ players, myName, onAddPlayer, onSubmit }) {
     await onSubmit({ playerA: a, playerB: b, scoreA: sa, scoreB: sb });
     const res = sa > sb ? "win" : sa < sb ? "loss" : "draw";
     setResult(res);
+    setWinnerName(res === "win" ? a : res === "loss" ? b : "");
+    setLoserName(res === "loss" ? a : res === "win" ? b : "");
     setTimeout(() => {
       setResult(null);
+      setWinnerName("");
+      setLoserName("");
       setSa(0);
       setSb(0);
       setSaving(false);
-    }, 1600);
+    }, 1800);
+  };
+
+  const addPlayer = async () => {
+    setAddError("");
+    const res = await onAddPlayer(newPlayer);
+    if (res?.error) {
+      setAddError(res.error);
+      return;
+    }
+    setNewPlayer("");
+    setShowAdd(false);
   };
 
   return (
     <div className="space-y-5">
       {result && (
         <div className="flex justify-center py-2">
-          <ResultPulse result={result} />
+          <ResultPulse result={result} winner={winnerName} loser={loserName} />
         </div>
       )}
+
+      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">JOGADORES</h3>
+
+        <div className="space-y-2">
+          {players.map((player) => (
+            <div key={player.id} className="flex items-center justify-between rounded-lg px-3 py-2 md-bg-panel-dark-40">
+              <span>{player.name}</span>
+              <button type="button" onClick={() => onDeletePlayer(player.name)} className="text-red-400 font-bold text-sm">
+                APAGAR
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
@@ -760,24 +1093,19 @@ function LogMatch({ players, myName, onAddPlayer, onSubmit }) {
         </div>
 
         {showAdd && (
-          <div className="flex gap-2 mb-4">
-            <input
-              value={newPlayer}
-              onChange={(e) => setNewPlayer(e.target.value)}
-              placeholder="Nome do jogador"
-              className="md-input flex-1 rounded-lg px-3 py-2 text-sm"
-            />
-            <button
-              onClick={async () => {
-                if (!newPlayer.trim()) return;
-                await onAddPlayer(newPlayer.trim());
-                setNewPlayer("");
-                setShowAdd(false);
-              }}
-              className="md-btn-amber px-3 rounded-lg font-oswald text-xs"
-            >
-              OK
-            </button>
+          <div className="mb-4">
+            <div className="flex gap-2">
+              <input
+                value={newPlayer}
+                onChange={(e) => setNewPlayer(e.target.value)}
+                placeholder="Nome do jogador"
+                className="md-input flex-1 rounded-lg px-3 py-2 text-sm"
+              />
+              <button onClick={addPlayer} className="md-btn-amber px-3 rounded-lg font-oswald text-xs">
+                OK
+              </button>
+            </div>
+            {addError && <p className="md-text-crimson text-sm mt-2">{addError}</p>}
           </div>
         )}
 
@@ -857,7 +1185,19 @@ function ScoreStepper({ value, onChange }) {
 /* ---------------- Stats computation ---------------- */
 
 function computeStats(players, matches) {
-  const stats = {};
+  const stats: Record<string, {
+    name: string;
+    played: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    gf: number;
+    ga: number;
+    points: number;
+    biggestWinMargin: number;
+    biggestWinLabel: string;
+  }> = {};
+
   players.forEach((p) => {
     stats[p.name] = {
       name: p.name,
@@ -912,64 +1252,6 @@ function computeStats(players, matches) {
 
 /* ---------------- Standings ---------------- */
 
-function Standings({ players, matches }) {
-  const stats = computeStats(players, matches);
-  const byPoints = [...stats].sort((a, b) => b.points - a.points || (b.gf - b.ga) - (a.gf - a.ga));
-  const mostLosses = [...stats].sort((a, b) => b.losses - a.losses)[0];
-  const mostWins = [...stats].sort((a, b) => b.wins - a.wins)[0];
-  const biggestRout = [...stats].sort((a, b) => b.biggestWinMargin - a.biggestWinMargin)[0];
-
-  if (!players.length) {
-    return <p className="md-text-muted text-sm text-center py-10">Sem jogadores no grupo ainda.</p>;
-  }
-  if (!matches.length) {
-    return <p className="md-text-muted text-sm text-center py-10">Nenhuma partida registrada ainda.</p>;
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-2">
-        <StatCard icon={<Trophy size={16} />} label="Mais vitórias" value={mostWins?.name} sub={`${mostWins?.wins} vitórias`} cls="md-text-amber" />
-        <StatCard icon={<TrendingDown size={16} />} label="Mais derrotas" value={mostLosses?.name} sub={`${mostLosses?.losses} derrotas`} cls="md-text-crimson" />
-        <StatCard icon={<Flame size={16} />} label="Maior goleada" value={biggestRout?.name} sub={biggestRout?.biggestWinLabel || "—"} cls="md-text-amber" />
-      </div>
-
-      <div className="md-bg-panel md-border md-border-line rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs md-text-muted font-oswald tracking-wide border-b md-border-line">
-              <th className="text-left px-3 py-2">JOGADOR</th>
-              <th className="px-1.5 py-2">J</th>
-              <th className="px-1.5 py-2">V</th>
-              <th className="px-1.5 py-2">E</th>
-              <th className="px-1.5 py-2">D</th>
-              <th className="px-1.5 py-2">SG</th>
-              <th className="px-2 py-2">PTS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byPoints.map((p, i) => (
-              <tr key={p.name} className={i % 2 === 0 ? "md-bg-panel-dark-40" : ""}>
-                <td className="px-3 py-2 font-inter font-medium md-text-bone flex items-center gap-2">
-                  <span className="md-text-muted-dim font-oswald w-4">{i + 1}</span>
-                  {p.name}
-                </td>
-                <td className="text-center px-1.5 md-text-muted">{p.played}</td>
-                <td className="text-center px-1.5 md-text-amber">{p.wins}</td>
-                <td className="text-center px-1.5 md-text-muted">{p.draws}</td>
-                <td className="text-center px-1.5 md-text-crimson">{p.losses}</td>
-                <td className="text-center px-1.5 md-text-muted">{p.gf - p.ga > 0 ? `+${p.gf - p.ga}` : p.gf - p.ga}</td>
-                <td className="text-center px-2 font-oswald md-text-bone">{p.points}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs md-text-muted-dim text-center">V = 3 pts · E = 1 pt · D = 0 pts</p>
-    </div>
-  );
-}
-
 function StatCard({ icon, label, value, sub, cls }) {
   return (
     <div className="md-bg-panel md-border md-border-line rounded-xl p-3 flex flex-col gap-1">
@@ -979,6 +1261,54 @@ function StatCard({ icon, label, value, sub, cls }) {
       </div>
       <p className="font-oswald text-sm truncate md-text-bone">{value || "—"}</p>
       <p className="text-xs md-text-muted truncate">{sub}</p>
+    </div>
+  );
+}
+
+/* ---------------- Standings ---------------- */
+
+function Standings({ players, matches }) {
+  const stats = computeStats(players, matches).sort(
+    (a, b) => b.points - a.points || b.wins - a.wins || b.gf - a.gf
+  );
+
+  const trophyStyles = [
+    { color: "text-amber-300", glow: "shadow-[0_0_18px_rgba(255,198,92,0.35)]", label: "OURO" },
+    { color: "text-slate-300", glow: "shadow-[0_0_18px_rgba(203,213,225,0.25)]", label: "PRATA" },
+    { color: "text-orange-300", glow: "shadow-[0_0_18px_rgba(253,186,116,0.25)]", label: "BRONZE" },
+    { color: "text-fuchsia-300", glow: "shadow-[0_0_18px_rgba(216,180,254,0.25)]", label: "ROXO" },
+  ];
+
+  if (!players.length) {
+    return <p className="md-text-muted text-sm text-center py-10">Adicione jogadores para ver a classificação.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {stats.map((entry, index) => {
+        const trophy = trophyStyles[index] || trophyStyles[3];
+        return (
+          <div key={entry.name} className="md-bg-panel md-border md-border-line rounded-xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`rounded-full p-2 ${trophy.color} ${trophy.glow}`}>
+                <Trophy size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-oswald text-sm md-text-amber">#{index + 1}</span>
+                  <span className="font-oswald text-base md-text-bone">{entry.name}</span>
+                </div>
+                <p className="text-xs md-text-muted mt-1">{entry.played} partidas • {entry.points} pts</p>
+              </div>
+            </div>
+            <div className="text-right text-xs md-text-muted">
+              <p>V {entry.wins} • E {entry.draws} • D {entry.losses}</p>
+              <p>GF {entry.gf} • GA {entry.ga}</p>
+              <p className={`mt-1 font-oswald tracking-wide ${trophy.color}`}>{trophy.label}</p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
