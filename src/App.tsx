@@ -2525,14 +2525,45 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
   const [mediaInputByMatch, setMediaInputByMatch] = useState({});
 
   const shareMatch = async (match) => {
-    const text = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB} | Matchday Ledger`;
+    const baseText = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB} | Matchday Ledger`;
+    const firstMedia = Array.isArray(match.media) && match.media.length > 0 ? String(match.media[0]) : "";
+
+    const makeFileFromMedia = async (mediaUrl) => {
+      const response = await fetch(mediaUrl);
+      const blob = await response.blob();
+      const mime = blob.type || "image/png";
+      const ext = mime.includes("gif") ? "gif" : mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
+      return new File([blob], `partida-${match.id || Date.now()}.${ext}`, { type: mime });
+    };
+
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Resultado da partida", text });
+        if (firstMedia) {
+          try {
+            const imageFile = await makeFileFromMedia(firstMedia);
+            if (navigator.canShare && navigator.canShare({ files: [imageFile] })) {
+              await navigator.share({
+                title: "Resultado da partida",
+                text: baseText,
+                files: [imageFile],
+              });
+              return;
+            }
+          } catch {}
+        }
+
+        const textWithLink = firstMedia && !firstMedia.startsWith("data:")
+          ? `${baseText}\n${firstMedia}`
+          : baseText;
+        await navigator.share({ title: "Resultado da partida", text: textWithLink });
         return;
       } catch {}
     }
-    const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
+
+    const textWithLink = firstMedia && !firstMedia.startsWith("data:")
+      ? `${baseText}\n${firstMedia}`
+      : baseText;
+    const wa = `https://wa.me/?text=${encodeURIComponent(textWithLink)}`;
     window.open(wa, "_blank", "noopener,noreferrer");
   };
 
