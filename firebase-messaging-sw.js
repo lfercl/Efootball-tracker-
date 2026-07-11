@@ -30,6 +30,9 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// Required by some installability checks on mobile browsers.
+self.addEventListener('fetch', () => {});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
