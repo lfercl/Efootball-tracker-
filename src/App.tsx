@@ -375,6 +375,15 @@ function GlobalStyle() {
       @keyframes mdFireworkSpark { 0% { transform: translate(0, 0) scale(0.2); opacity:0; } 20% { opacity:1; } 100% { transform: var(--spark-transform) scale(1.1); opacity:0; } }
       @keyframes mdFireworkTwinkle { 0%,100% { opacity:0.15; transform: scale(0.9); } 50% { opacity:1; transform: scale(1.15); } }
       @keyframes mdUserBlink { 0%,100% { opacity:0.35; transform: scale(0.98); filter: saturate(0.92); } 50% { opacity:1; transform: scale(1.03); filter: saturate(1.15); } }
+      @keyframes mdLogoBlink { 0%,100% { opacity:1; } 50% { opacity:0.28; } }
+      @keyframes mdTrophyRiseDrop {
+        0% { transform: translateY(0) scale(1); opacity:1; }
+        34% { transform: translateY(-78px) scale(0.9); opacity:0; }
+        35% { transform: translateY(64px) scale(1.12); opacity:0; }
+        58% { transform: translateY(10px) scale(1.02); opacity:1; }
+        76% { transform: translateY(-4px) scale(1); opacity:1; }
+        100% { transform: translateY(0) scale(1); opacity:1; }
+      }
 
       .md-anim-slideIn{ animation: mdSlideIn 0.35s ease-out; }
       .md-anim-slideInDrawer{ animation: mdSlideIn 0.25s ease-out; }
@@ -394,6 +403,8 @@ function GlobalStyle() {
       .md-anim-firework-spark{ animation: mdFireworkSpark 0.9s ease-out forwards; }
       .md-anim-firework-twinkle{ animation: mdFireworkTwinkle 1.1s ease-in-out infinite; }
       .md-anim-user-blink{ animation: mdUserBlink 1.1s ease-in-out infinite; }
+      .md-anim-logo-blink{ animation: mdLogoBlink 1.8s ease-in-out infinite; }
+      .md-anim-trophy-rise-drop{ animation: mdTrophyRiseDrop 2.2s ease-in-out infinite; }
       .md-result-stage{ min-height: 32rem; padding: 2.25rem 0; }
 
       @media (prefers-reduced-motion: reduce) {
@@ -1253,7 +1264,8 @@ export default function App() {
   const [unreadChat, setUnreadChat] = useState(0);
   const [feedOpen, setFeedOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [authIsAdmin, setAuthIsAdmin] = useState(false);
+  const [codeIsAdmin, setCodeIsAdmin] = useState(false);
   const [headerHidden, setHeaderHidden] = useState(false);
   const reminderSentRef = useRef<Record<string, boolean>>({});
   const touchStartXRef = useRef(0);
@@ -1266,12 +1278,15 @@ export default function App() {
   const pollRef = useRef(null);
   const lastScrollYRef = useRef(0);
   const finalizingLeagueRef = useRef(false);
+  const isAdmin = authIsAdmin || codeIsAdmin;
 
   useEffect(() => {
     (async () => {
       const name = await storageGet("my-name", false);
       const code = await storageGet("my-group", false);
+      const adminUnlock = await storageGet("admin-code-unlocked", false);
       if (name) setMyName(name);
+      if (adminUnlock === "1") setCodeIsAdmin(true);
       if (code) {
         setGroupCode(code);
         const cached = readCachedGroup(code);
@@ -1321,7 +1336,7 @@ export default function App() {
   useEffect(() => {
     if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAdmin(user?.uid === ADMIN_UID);
+      setAuthIsAdmin(user?.uid === ADMIN_UID);
     });
     return unsubscribe;
   }, []);
@@ -1763,6 +1778,15 @@ export default function App() {
     setPhase("join");
   };
 
+  const handleUnlockAdmin = async (adminCode) => {
+    const normalized = String(adminCode || "").trim();
+    if (!normalized) return { error: "Digite o codigo de administrador." };
+    if (normalized !== ADMIN_UID) return { error: "Codigo de administrador invalido." };
+    setCodeIsAdmin(true);
+    await storageSet("admin-code-unlocked", "1", false);
+    return { ok: true };
+  };
+
   const myEmblemId = getEmblemIdByName(groupData?.players || [], myName);
   const inviteLink = buildInviteLink(groupCode);
 
@@ -1866,7 +1890,13 @@ export default function App() {
       )}
 
       {phase === "join" && (
-        <JoinScreen defaultName={myName} onCreate={handleCreateGroup} onJoin={handleJoinGroup} isAdmin={isAdmin} />
+        <JoinScreen
+          defaultName={myName}
+          onCreate={handleCreateGroup}
+          onJoin={handleJoinGroup}
+          isAdmin={isAdmin}
+          onUnlockAdmin={handleUnlockAdmin}
+        />
       )}
 
       {phase === "app" && (
@@ -2012,12 +2042,13 @@ export default function App() {
 
 /* ---------------- Join / Create screen ---------------- */
 
-function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false }) {
+function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAdmin }) {
   useFonts();
   const [mode, setMode] = useState("join");
   const [name, setName] = useState(defaultName || "");
   const [code, setCode] = useState("");
   const [groupName, setGroupName] = useState("");
+  const [adminCode, setAdminCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -2056,16 +2087,26 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false }) {
     setBusy(false);
   };
 
+  const submitAdminUnlock = async () => {
+    setError("");
+    const res = await onUnlockAdmin?.(adminCode);
+    if (res?.error) {
+      setError(res.error);
+      return;
+    }
+    setAdminCode("");
+  };
+
   return (
     <div className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost flex items-center justify-center px-4">
       <GlobalStyle />
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full md-bg-amber-10 md-border md-border-amber-30 mb-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full md-bg-amber-10 md-border md-border-amber-30 mb-3 md-anim-trophy-rise-drop">
             <Trophy size={26} className="md-text-amber" />
           </div>
-          <h1 className="font-oswald text-3xl md-tracking-sm md-text-bone">MATCHDAY LEDGER</h1>
-          <p className="md-text-muted text-sm mt-1">Placar do grupo de eFootball</p>
+          <h1 className="font-oswald text-3xl md-tracking-sm md-text-bone md-anim-logo-blink">MATCHDAY LEDGER</h1>
+          <p className="md-text-muted text-sm mt-1 md-anim-logo-blink">Placar do grupo de eFootball</p>
         </div>
 
         <div className="flex md-bg-panel rounded-lg p-1 mb-5 md-border md-border-line">
@@ -2086,6 +2127,25 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false }) {
 
         {!isAdmin && (
           <p className="md-text-muted text-xs mb-4">Somente administrador pode criar grupo neste app.</p>
+        )}
+
+        {!isAdmin && (
+          <div className="md-bg-panel md-border md-border-line rounded-xl p-3 mb-4 space-y-2">
+            <p className="text-xs md-text-muted font-oswald">ENTRAR COMO ADMINISTRADOR</p>
+            <input
+              value={adminCode}
+              onChange={(e) => setAdminCode(e.target.value.trim())}
+              placeholder="Codigo UID"
+              className="md-input w-full rounded-lg px-3 py-2.5 text-sm"
+            />
+            <button
+              type="button"
+              onClick={submitAdminUnlock}
+              className="md-step-btn w-full py-2 rounded-lg text-xs font-oswald"
+            >
+              ENTRAR COMO ADMIN
+            </button>
+          </div>
         )}
 
         <div className="space-y-3">
