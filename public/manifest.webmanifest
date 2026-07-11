@@ -1,9 +1,9 @@
 {
-  "id": "./",
+  "id": "/Efootball-tracker-/",
   "name": "Matchday Ledger - eFootball Tracker",
   "short_name": "eFootball",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/Efootball-tracker-/",
+  "scope": "/Efootball-tracker-/",
   "display": "standalone",
   "background_color": "#071A14",
   "theme_color": "#071A14",
