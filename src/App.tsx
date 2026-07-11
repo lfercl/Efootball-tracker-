@@ -1866,7 +1866,7 @@ export default function App() {
       )}
 
       {phase === "join" && (
-        <JoinScreen defaultName={myName} onCreate={handleCreateGroup} onJoin={handleJoinGroup} />
+        <JoinScreen defaultName={myName} onCreate={handleCreateGroup} onJoin={handleJoinGroup} isAdmin={isAdmin} />
       )}
 
       {phase === "app" && (
@@ -2012,7 +2012,7 @@ export default function App() {
 
 /* ---------------- Join / Create screen ---------------- */
 
-function JoinScreen({ defaultName, onCreate, onJoin }) {
+function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false }) {
   useFonts();
   const [mode, setMode] = useState("join");
   const [name, setName] = useState(defaultName || "");
@@ -2036,6 +2036,10 @@ function JoinScreen({ defaultName, onCreate, onJoin }) {
     if (!name.trim()) return setError("Digite seu nome.");
     setBusy(true);
     if (mode === "create") {
+      if (!isAdmin) {
+        setBusy(false);
+        return setError("Apenas o administrador pode criar grupos.");
+      }
       await onCreate(name.trim(), groupName.trim());
     } else {
       if (!code.trim()) {
@@ -2073,11 +2077,16 @@ function JoinScreen({ defaultName, onCreate, onJoin }) {
           </button>
           <button
             onClick={() => setMode("create")}
+            disabled={!isAdmin}
             className={`md-tab flex-1 py-2 rounded-md font-oswald text-sm tracking-wide ${mode === "create" ? "active" : ""}`}
           >
             CRIAR GRUPO
           </button>
         </div>
+
+        {!isAdmin && (
+          <p className="md-text-muted text-xs mb-4">Somente administrador pode criar grupo neste app.</p>
+        )}
 
         <div className="space-y-3">
           <div>
