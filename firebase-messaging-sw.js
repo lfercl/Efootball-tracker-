@@ -13,7 +13,7 @@ const initFirebase = (config) => {
       const body = payload.notification?.body || payload.data?.body || 'Confira a partida no app.';
       self.registration.showNotification(title, {
         body,
-        icon: '/favicon.ico',
+        icon: './favicon.ico',
         data: payload.data,
       });
     });
@@ -43,7 +43,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/');
+        return clients.openWindow('./');
       }
     })
   );
