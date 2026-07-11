@@ -144,6 +144,7 @@ function GlobalStyle() {
       .md-anim-goal-text{ animation: mdGoalText 0.95s ease-out forwards; }
       .md-anim-result-rise{ animation: mdResultRise 0.45s ease-out forwards; }
       .md-anim-card-pop{ animation: mdCardPop 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
+      .md-result-stage{ min-height: 24rem; padding: 1.75rem 0; }
 
       @media (prefers-reduced-motion: reduce) {
         .md-anim-slideIn, .md-anim-slideInDrawer, .md-anim-popIn, .md-anim-shake,
@@ -313,19 +314,19 @@ function ResultPulse({ result, winner, loser }) {
 
   return (
     <div className={`w-full flex flex-col items-center justify-center gap-3 md-anim-popIn ${cfg.cls}`}>
-      <div className="relative flex items-center justify-center w-full min-h-32 overflow-visible">
+      <div className="md-result-stage relative flex items-center justify-center w-full overflow-visible">
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="absolute h-24 w-24 rounded-full border-4 border-amber-200/60 md-anim-goal-glow" />
-          <div className="absolute h-20 w-20 rounded-full border-4 border-amber-300/70 md-anim-goal-glow" style={{ animationDelay: "0.08s" }} />
-          <div className="md-anim-goal-burst rounded-full w-16 h-16 md-bg-amber" style={{ boxShadow: "0 0 32px rgba(255,182,39,0.95)" }} />
+          <div className="absolute h-56 w-56 rounded-full border-[10px] border-amber-200/70 md-anim-goal-glow" />
+          <div className="absolute h-44 w-44 rounded-full border-[8px] border-amber-300/80 md-anim-goal-glow" style={{ animationDelay: "0.08s" }} />
+          <div className="md-anim-goal-burst rounded-full w-32 h-32 md-bg-amber" style={{ boxShadow: "0 0 64px rgba(255,182,39,1)" }} />
         </div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md-anim-goal-shot z-20">
-          <div className="w-9 h-9 rounded-full md-bg-amber border-2 border-white" style={{ boxShadow: "0 0 26px rgba(255,182,39,1)" }} />
+          <div className="w-16 h-16 rounded-full md-bg-amber border-4 border-white" style={{ boxShadow: "0 0 42px rgba(255,182,39,1)" }} />
         </div>
-        <div className="absolute top-3 md-anim-goal-text font-oswald text-[11px] md-tracking-lg md-text-amber">GOOOL!</div>
-        <div className={`md-anim-result-rise flex flex-col items-center gap-1 z-30 ${cfg.cls}`}>
-          <div className={cfg.anim}>{cfg.icon}</div>
-          <span className="font-oswald text-sm md-tracking-sm">{cfg.label}</span>
+        <div className="absolute top-8 md-anim-goal-text font-oswald text-[18px] md-tracking-lg md-text-amber drop-shadow-[0_0_12px_rgba(255,182,39,0.95)]">GOOOL!</div>
+        <div className={`md-anim-result-rise flex flex-col items-center gap-2 z-30 ${cfg.cls}`}>
+          <div className={`${cfg.anim} p-5 rounded-full md-bg-panel-dark-80 border border-white/15 shadow-[0_0_30px_rgba(0,0,0,0.4)]`}>{cfg.icon}</div>
+          <span className="font-oswald text-lg md-tracking-sm">{cfg.label}</span>
         </div>
       </div>
 
@@ -1064,8 +1065,10 @@ function LogMatch({ players, myName, onAddPlayer, onDeletePlayer, onSubmit }) {
   return (
     <div className="space-y-5">
       {result && (
-        <div className="flex justify-center py-2">
-          <ResultPulse result={result} winner={winnerName} loser={loserName} />
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6 pointer-events-none">
+          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-black/35 p-6 shadow-[0_0_60px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+            <ResultPulse result={result} winner={winnerName} loser={loserName} />
+          </div>
         </div>
       )}
 
