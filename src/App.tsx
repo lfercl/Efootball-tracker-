@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
+import { Capacitor } from "@capacitor/core";
+import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -11,7 +13,7 @@ interface ImportMetaEnv {
 }
 
 // Color settings panel (placed at module end so it can use helpers)
-function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEmblem }) {
+function ColorSettings({ open, onClose, initialSection = "visual", myName = "", myEmblemId = "", onSaveMyEmblem }) {
   const [vals, setVals] = useState({
     "md-bg-stadium": "#071A14",
     "md-bg-panel": "#0F3D2A",
@@ -24,6 +26,7 @@ function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEm
     "md-border-line": "#2E7A52",
   });
   const [selectedEmblem, setSelectedEmblem] = useState(myEmblemId || "");
+  const [activeSection, setActiveSection] = useState("visual");
 
   const PRESETS = {
     "Padrão": {
@@ -118,19 +121,33 @@ function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEm
 
   useEffect(() => {
     setSelectedEmblem(myEmblemId || "");
-  }, [myEmblemId, open]);
+    if (open) {
+      setActiveSection("visual");
+    }
+  }, [myEmblemId, open, initialSection]);
 
   const update = (k, v) => setVals((s) => ({ ...s, [k]: v }));
 
-  const save = async () => {
-    await storageSet("theme-colors", JSON.stringify(vals), false);
-    applyTheme(vals);
+  const persistAndClose = async (nextVals) => {
+    await storageSet("theme-colors", JSON.stringify(nextVals), false);
+    applyTheme(nextVals);
     onClose();
   };
 
-  const applyPreset = (p) => {
+  const saveEmblemAndClose = async (emblemId) => {
+    if (!myName) return;
+    setSelectedEmblem(emblemId);
+    await onSaveMyEmblem?.(emblemId);
+    onClose();
+  };
+
+  const save = async () => {
+    await persistAndClose(vals);
+  };
+
+  const applyPreset = async (p) => {
     setVals(p);
-    applyTheme(p);
+    await persistAndClose(p);
   };
 
   const reset = () => {
@@ -163,14 +180,26 @@ function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEm
           </div>
         </div>
 
+        <div className="mb-4 grid grid-cols-1 gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveSection("visual")}
+            className={`md-step-btn px-4 py-2 rounded-md text-sm ${activeSection === "visual" ? "md-bg-amber md-text-bone" : ""}`}
+          >
+            VISUAL
+          </button>
+        </div>
+
+        {activeSection === "visual" && (
         <div className="mb-4 rounded-lg border border-white/10 bg-black/15 p-3">
           <p className="text-sm md-text-muted mb-2">Emblema do usuario logado</p>
+          <p className="text-xs md-text-muted mb-2">Ao tocar no emblema, ele ja salva e fecha este ajuste.</p>
           <p className="text-xs md-text-muted mb-2">Usuario: <span className="font-oswald md-text-bone">{myName || "nao identificado"}</span></p>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <EmblemBadge emblemId={selectedEmblem} size={56} />
             <select
               value={selectedEmblem}
-              onChange={(e) => setSelectedEmblem(e.target.value)}
+              onChange={(e) => saveEmblemAndClose(e.target.value)}
               className="md-input flex-1 rounded-lg px-3 py-3 text-base"
               disabled={!myName}
             >
@@ -179,19 +208,14 @@ function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEm
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
             </select>
-            <button
-              type="button"
-              onClick={() => onSaveMyEmblem?.(selectedEmblem)}
-              className="md-btn-amber px-5 py-3 rounded-md text-sm font-oswald"
-              disabled={!myName}
-            >
-              SALVAR
-            </button>
           </div>
         </div>
+        )}
 
+        {activeSection === "visual" && (
         <div className="mb-3">
           <p className="text-sm md-text-muted mb-2">Temas prontos</p>
+          <p className="text-xs md-text-muted mb-2">Ao tocar em um tema, ele ja salva e fecha este ajuste.</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {Object.entries(PRESETS).map(([name, p]) => (
               <button key={name} onClick={() => applyPreset(p)} className="md-step-btn px-4 py-2 rounded-md text-sm">
@@ -200,7 +224,9 @@ function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEm
             ))}
           </div>
         </div>
+        )}
 
+        {activeSection === "visual" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {Object.keys(vals).map((k) => (
             <div key={k} className="flex items-center gap-3">
@@ -210,6 +236,7 @@ function ColorSettings({ open, onClose, myName = "", myEmblemId = "", onSaveMyEm
             </div>
           ))}
         </div>
+        )}
 
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={save} className="md-btn-amber px-6 py-3 rounded-md text-sm">Salvar</button>
@@ -224,7 +251,7 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
 import {
   Trophy,
   Swords,
@@ -254,6 +281,7 @@ import {
   Link2,
   ImagePlus,
   Crown,
+  ArrowUp,
 } from "lucide-react";
 
 /* ============================================================
@@ -377,6 +405,22 @@ function GlobalStyle() {
       @keyframes mdGoalText { 0% { transform: translateY(6px) scale(0.9); opacity:0; } 35% { opacity:1; } 100% { transform: translateY(-12px) scale(1.05); opacity:0; } }
       @keyframes mdResultRise { 0% { transform: translateY(20px) scale(0.9); opacity:0; } 100% { transform: translateY(0) scale(1); opacity:1; } }
       @keyframes mdCardPop { 0% { transform: translateY(14px) scale(0.95); opacity:0; } 60% { transform: translateY(-2px) scale(1.02); opacity:1; } 100% { transform: translateY(0) scale(1); opacity:1; } }
+      @keyframes mdGoodArrowRise { 0% { transform: translateY(30px) scale(0.7); opacity: 0; } 20% { opacity: 0.95; } 100% { transform: translateY(-120px) scale(1.2); opacity: 0; } }
+      @keyframes mdLightningStrikeReal {
+        0% { opacity: 0; transform: translateY(-20px) scale(0.6) rotate(var(--bolt-rot)); filter: blur(2px); }
+        8% { opacity: 1; filter: blur(0); }
+        12% { opacity: 0.15; }
+        18% { opacity: 1; }
+        24% { opacity: 0.3; }
+        32% { opacity: 1; }
+        46% { opacity: 0.12; }
+        100% { opacity: 0; transform: translateY(8px) scale(1.02) rotate(var(--bolt-rot)); filter: blur(1px); }
+      }
+      @keyframes mdLightningGlowReal {
+        0%, 100% { opacity: 0; transform: scale(0.7); }
+        10%, 19%, 33% { opacity: 0.95; transform: scale(1); }
+        14%, 25%, 45% { opacity: 0.28; transform: scale(1.18); }
+      }
       @keyframes mdFireworkRise { 0% { transform: translateY(90px) scale(0.55); opacity:0; } 20% { opacity:1; } 100% { transform: translateY(0) scale(1); opacity:1; } }
       @keyframes mdFireworkPop { 0% { transform: scale(0.12); opacity:0; } 18% { opacity:1; } 62% { transform: scale(1.35); opacity:1; } 100% { transform: scale(1.95); opacity:0; } }
       @keyframes mdFireworkSpark { 0% { transform: translate(0, 0) scale(0.2); opacity:0; } 20% { opacity:1; } 100% { transform: var(--spark-transform) scale(1.1); opacity:0; } }
@@ -405,6 +449,9 @@ function GlobalStyle() {
       .md-anim-goal-text{ animation: mdGoalText 0.95s ease-out forwards; }
       .md-anim-result-rise{ animation: mdResultRise 0.45s ease-out forwards; }
       .md-anim-card-pop{ animation: mdCardPop 0.5s cubic-bezier(0.22,1,0.36,1) forwards; }
+      .md-anim-good-arrow{ animation: mdGoodArrowRise 1.3s ease-out infinite; }
+      .md-anim-lightning-real{ animation: mdLightningStrikeReal 1.25s steps(2, end) infinite; }
+      .md-anim-lightning-glow-real{ animation: mdLightningGlowReal 1.25s ease-in-out infinite; }
       .md-anim-firework-rise{ animation: mdFireworkRise 0.8s ease-out forwards; }
       .md-anim-firework-pop{ animation: mdFireworkPop 1s ease-out forwards; }
       .md-anim-firework-spark{ animation: mdFireworkSpark 0.9s ease-out forwards; }
@@ -533,6 +580,9 @@ function genId() {
 }
 
 const EMBLEM_OPTIONS = [
+  { id: "vitoria-guimaraes", label: "Vitória de Guimarães", url: "https://upload.wikimedia.org/wikipedia/en/thumb/d/d5/Vit%C3%B3ria_Guimar%C3%A3es.svg/250px-Vit%C3%B3ria_Guimar%C3%A3es.svg.png" },
+  { id: "sporting-cp", label: "Sporting CP", url: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Sporting_Clube_de_Portugal_2026.svg/250px-Sporting_Clube_de_Portugal_2026.svg.png" },
+  { id: "benfica", label: "SL Benfica", url: "https://upload.wikimedia.org/wikipedia/en/thumb/a/a2/SL_Benfica_logo.svg/250px-SL_Benfica_logo.svg.png" },
   { id: "barcelona", label: "Barcelona", url: "https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg" },
   { id: "real-madrid", label: "Real Madrid", url: "https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg" },
   { id: "arsenal", label: "Arsenal", url: "https://upload.wikimedia.org/wikipedia/en/5/53/Arsenal_FC.svg" },
@@ -545,6 +595,9 @@ const EMBLEM_OPTIONS = [
   { id: "inter-miami", label: "Inter Miami", url: "https://upload.wikimedia.org/wikipedia/en/5/5c/Inter_Miami_CF_logo.svg" },
   { id: "brasil", label: "Brasil", url: "https://flagcdn.com/w80/br.png" },
   { id: "portugal", label: "Portugal", url: "https://flagcdn.com/w80/pt.png" },
+  { id: "sporting", label: "Sporting", url: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Sporting_Clube_de_Portugal_2026.svg/960px-Sporting_Clube_de_Portugal_2026.svg.png" },
+  { id: "benfica", label: "Benfica", url: "https://upload.wikimedia.org/wikipedia/en/thumb/a/a2/SL_Benfica_logo.svg/1280px-SL_Benfica_logo.svg.png" },
+  { id: "vitoria-guimaraes", label: "Vitoria de Guimaraes", url: "https://upload.wikimedia.org/wikipedia/en/thumb/d/d5/Vit%C3%B3ria_Guimar%C3%A3es.svg/960px-Vit%C3%B3ria_Guimar%C3%A3es.svg.png" },
   { id: "mocambique", label: "Mocambique", url: "https://upload.wikimedia.org/wikipedia/commons/d/d0/Flag_of_Mozambique.svg" },
   { id: "cabo-verde", label: "Cabo Verde", url: "https://flagcdn.com/w80/cv.png" },
 ];
@@ -554,6 +607,81 @@ const EMBLEM_MAP = EMBLEM_OPTIONS.reduce((acc, item) => {
   return acc;
 }, {} as Record<string, { id: string; label: string; url: string }>);
 
+const FMA_PLAYLISTS = [
+  {
+    id: "radio-mocambique-24h",
+    name: "Mocambique 24h",
+    tracks: [
+      { title: "LM Radio Mozambique", artist: "Musica 24h", url: "https://edge.iono.fm/xice/392_medium.mp3" },
+    ],
+  },
+  {
+    id: "radio-cabo-verde-24h",
+    name: "Cabo Verde 24h",
+    tracks: [
+      { title: "Kriola", artist: "Musica 24h", url: "https://stream.laut.fm/kriola" },
+    ],
+  },
+  {
+    id: "radio-pop-internacional-24h",
+    name: "Pop Internacional 24h",
+    tracks: [
+      { title: "SomaFM PopTron", artist: "Musica 24h", url: "https://ice2.somafm.com/poptron-128-mp3" },
+    ],
+  },
+  {
+    id: "radio-pagode-24h",
+    name: "Pagode 24h",
+    tracks: [
+      { title: "Hunter FM Pagode", artist: "Musica 24h", url: "https://live.hunter.fm/pagode_normal" },
+    ],
+  },
+  {
+    id: "radio-rock-internacional",
+    name: "Rock Internacional",
+    tracks: [
+      { title: "Rock Antenne Hard Rock", artist: "Musica 24h", url: "https://stream.rockantenne.de/rock-antenne-hard-rock/stream/mp3" },
+    ],
+  },
+  {
+    id: "radio-rock-brasileiro",
+    name: "Rock Brasileiro",
+    tracks: [
+      { title: "98 Rock Brasil", artist: "Musica 24h", url: "https://stm41.stmsrv.com:16614/stream?type=http&nocache=1897905694" },
+    ],
+  },
+  {
+    id: "radio-mpb",
+    name: "MPB",
+    tracks: [
+      { title: "Hunter FM MPB", artist: "Musica 24h", url: "https://live.hunter.fm/mpb_normal" },
+    ],
+  },
+];
+
+function getFmaPlaylistById(playlistId) {
+  const id = String(playlistId || "").trim();
+  if (!id) return FMA_PLAYLISTS[0] || null;
+  return FMA_PLAYLISTS.find((playlist) => playlist.id === id) || FMA_PLAYLISTS[0] || null;
+}
+
+function normalizeFmaPlayback(playback, playlistId) {
+  const playlist = getFmaPlaylistById(playlistId);
+  const tracksLength = Math.max(1, Number(playlist?.tracks?.length || 0));
+  const rawIndex = Number(playback?.trackIndex || 0);
+  const safeIndex = Number.isFinite(rawIndex)
+    ? Math.min(Math.max(Math.floor(rawIndex), 0), tracksLength - 1)
+    : 0;
+
+  return {
+    trackIndex: safeIndex,
+    startedAt: Math.max(0, Number(playback?.startedAt || 0)),
+    paused: Boolean(playback?.paused),
+    pausePositionSec: Math.max(0, Number(playback?.pausePositionSec || 0)),
+    updatedAt: Math.max(0, Number(playback?.updatedAt || 0)),
+  };
+}
+
 function normalizePlayer(player) {
   return {
     ...player,
@@ -562,6 +690,7 @@ function normalizePlayer(player) {
 }
 
 function normalizeGroupData(data) {
+  const normalizedPlaylistId = typeof data?.fmaPlaylistId === "string" ? data.fmaPlaylistId : "";
   const normalizedMessages = (data?.messages || []).map((message) => {
     if (typeof message === "string") {
       return {
@@ -590,6 +719,8 @@ function normalizeGroupData(data) {
 
   return {
     ...data,
+    fmaPlaylistId: normalizedPlaylistId,
+    fmaPlayback: normalizeFmaPlayback(data?.fmaPlayback, normalizedPlaylistId),
     players: (data?.players || []).map(normalizePlayer),
     matches: normalizedMatches,
     messages: normalizedMessages,
@@ -960,6 +1091,23 @@ function hasMeaningfulGroupChange(prev, next) {
   if ((prev.leagueHistory || []).length !== (next.leagueHistory || []).length) return true;
   if ((prev.activeLeague?.id || "") !== (next.activeLeague?.id || "")) return true;
   if ((prev.activeLeague?.targetDateTs || 0) !== (next.activeLeague?.targetDateTs || 0)) return true;
+  if (String(prev.fmaPlaylistId || "") !== String(next.fmaPlaylistId || "")) return true;
+
+  const prevPlayers = prev.players || [];
+  const nextPlayers = next.players || [];
+  for (let i = 0; i < prevPlayers.length; i++) {
+    const prevPlayer = prevPlayers[i] || {};
+    const nextPlayer = nextPlayers[i] || {};
+    if (String(prevPlayer.id || "") !== String(nextPlayer.id || "")) return true;
+    if (String(prevPlayer.name || "") !== String(nextPlayer.name || "")) return true;
+    if (String(prevPlayer.emblemId || "") !== String(nextPlayer.emblemId || "")) return true;
+  }
+
+  if ((prev.fmaPlayback?.trackIndex || 0) !== (next.fmaPlayback?.trackIndex || 0)) return true;
+  if (Boolean(prev.fmaPlayback?.paused) !== Boolean(next.fmaPlayback?.paused)) return true;
+  if (Number(prev.fmaPlayback?.pausePositionSec || 0) !== Number(next.fmaPlayback?.pausePositionSec || 0)) return true;
+  if (Number(prev.fmaPlayback?.startedAt || 0) !== Number(next.fmaPlayback?.startedAt || 0)) return true;
+  if (Number(prev.fmaPlayback?.updatedAt || 0) !== Number(next.fmaPlayback?.updatedAt || 0)) return true;
 
   const prevLastMatch = prev.matches?.[prev.matches.length - 1]?.id || "";
   const nextLastMatch = next.matches?.[next.matches.length - 1]?.id || "";
@@ -1146,6 +1294,25 @@ function ResultPulse({ result, winner, loser, fireworks }) {
     loss: { cls: "md-text-crimson", label: "DERROTA", icon: <TrendingDown size={34} />, anim: "md-anim-shake" },
   };
   const cfg = map[result];
+  const headline = result === "win" ? "VENCEDOR" : result === "draw" ? "EMPATOU" : "DERROTA";
+  const goodArrows = [
+    { left: "12%", delay: "0ms", size: 22 },
+    { left: "24%", delay: "220ms", size: 20 },
+    { left: "76%", delay: "140ms", size: 22 },
+    { left: "88%", delay: "360ms", size: 20 },
+  ];
+  const lightningBolts = [
+    { left: "7%", top: "8%", scale: 0.9, rot: "-14deg", delay: "0ms" },
+    { left: "16%", top: "18%", scale: 1.1, rot: "8deg", delay: "180ms" },
+    { left: "24%", top: "6%", scale: 0.85, rot: "-6deg", delay: "320ms" },
+    { left: "35%", top: "14%", scale: 1.25, rot: "5deg", delay: "120ms" },
+    { left: "46%", top: "7%", scale: 1.0, rot: "-10deg", delay: "420ms" },
+    { left: "56%", top: "16%", scale: 1.15, rot: "12deg", delay: "260ms" },
+    { left: "66%", top: "9%", scale: 0.95, rot: "-7deg", delay: "500ms" },
+    { left: "76%", top: "20%", scale: 1.2, rot: "10deg", delay: "80ms" },
+    { left: "84%", top: "8%", scale: 0.88, rot: "-5deg", delay: "360ms" },
+    { left: "92%", top: "16%", scale: 1.1, rot: "6deg", delay: "220ms" },
+  ];
   const bursts = [
     { left: "10%", top: "20%", color: "#FFB627", delay: "0ms", size: 1.05 },
     { left: "22%", top: "15%", color: "#FFD98B", delay: "130ms", size: 0.9 },
@@ -1180,6 +1347,45 @@ function ResultPulse({ result, winner, loser, fireworks }) {
       <div className="md-result-stage relative flex items-center justify-center w-full overflow-visible">
         {fireworks && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {result === "win" && (
+              <>
+                {lightningBolts.map((bolt, idx) => (
+                  <div
+                    key={`lightning-${idx}`}
+                    className="absolute pointer-events-none"
+                    style={{ left: bolt.left, top: bolt.top, transform: `scale(${bolt.scale})` }}
+                  >
+                    <div
+                      className="relative md-anim-lightning-real"
+                      style={{ ["--bolt-rot" as string]: bolt.rot, animationDelay: bolt.delay }}
+                    >
+                      <svg width="54" height="132" viewBox="0 0 54 132" fill="none" className="drop-shadow-[0_0_18px_rgba(56,189,248,0.95)]">
+                        <path
+                          d="M30 2 L8 56 H24 L14 96 L44 48 H30 L42 2 Z"
+                          fill="#9FE9FF"
+                          stroke="#E0F7FF"
+                          strokeWidth="2.2"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <div className="absolute left-1/2 top-[58px] h-[86px] w-[5px] -translate-x-1/2 rounded-full bg-gradient-to-b from-cyan-200/85 via-sky-300/50 to-transparent blur-[1px] md-anim-lightning-glow-real" style={{ animationDelay: bolt.delay }} />
+                    </div>
+                  </div>
+                ))}
+                {goodArrows.map((arrow, idx) => (
+                  <div
+                    key={`good-arrow-${idx}`}
+                    className="absolute bottom-[6%] md-anim-good-arrow"
+                    style={{ left: arrow.left, animationDelay: arrow.delay }}
+                  >
+                    <ArrowUp
+                      size={arrow.size}
+                      className="text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.9)]"
+                    />
+                  </div>
+                ))}
+              </>
+            )}
             <div className="absolute inset-0 opacity-70 md-anim-firework-twinkle">
               <div className="absolute left-[12%] top-[14%] h-1.5 w-1.5 rounded-full bg-white" />
               <div className="absolute left-[24%] top-[10%] h-1 w-1 rounded-full bg-amber-200" />
@@ -1224,17 +1430,17 @@ function ResultPulse({ result, winner, loser, fireworks }) {
           </div>
         )}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="absolute h-72 w-72 rounded-full border-[12px] border-amber-200/70 md-anim-goal-glow" />
-          <div className="absolute h-56 w-56 rounded-full border-[10px] border-amber-300/80 md-anim-goal-glow" style={{ animationDelay: "0.08s" }} />
-          <div className="md-anim-goal-burst rounded-full w-40 h-40 md-bg-amber" style={{ boxShadow: "0 0 80px rgba(255,182,39,1)" }} />
+          <div className="absolute h-96 w-96 rounded-full border-[12px] border-amber-200/70 md-anim-goal-glow" />
+          <div className="absolute h-72 w-72 rounded-full border-[10px] border-amber-300/80 md-anim-goal-glow" style={{ animationDelay: "0.08s" }} />
+          <div className="md-anim-goal-burst rounded-full w-52 h-52 md-bg-amber" style={{ boxShadow: "0 0 100px rgba(255,182,39,1)" }} />
         </div>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md-anim-goal-shot z-20">
-          <div className="w-20 h-20 rounded-full md-bg-amber border-4 border-white" style={{ boxShadow: "0 0 54px rgba(255,182,39,1)" }} />
+          <div className="w-24 h-24 rounded-full md-bg-amber border-4 border-white" style={{ boxShadow: "0 0 64px rgba(255,182,39,1)" }} />
         </div>
-        <div className="absolute top-8 md-anim-goal-text font-oswald text-[22px] md-tracking-lg md-text-amber drop-shadow-[0_0_12px_rgba(255,182,39,0.95)]">GOOOL!</div>
+        <div className="absolute top-8 md-anim-goal-text font-oswald text-[34px] md-tracking-lg md-text-amber drop-shadow-[0_0_14px_rgba(255,182,39,0.95)]">{headline}</div>
         <div className={`md-anim-result-rise flex flex-col items-center gap-2 z-30 ${cfg.cls}`}>
-          <div className={`${cfg.anim} p-7 rounded-full md-bg-panel-dark-80 border border-white/15 shadow-[0_0_40px_rgba(0,0,0,0.45)]`}>{cfg.icon}</div>
-          <span className="font-oswald text-2xl md-tracking-sm">{cfg.label}</span>
+          <div className={`${cfg.anim} p-10 rounded-full md-bg-panel-dark-80 border border-white/15 shadow-[0_0_54px_rgba(0,0,0,0.45)]`}>{cfg.icon}</div>
+          <span className="font-oswald text-3xl md-tracking-sm">{cfg.label}</span>
         </div>
       </div>
 
@@ -1263,6 +1469,7 @@ export default function App() {
   const [phase, setPhase] = useState("loading"); // loading | join | app
   const [storageOk, setStorageOk] = useState(true);
   const [myName, setMyName] = useState("");
+  const [myPlayerId, setMyPlayerId] = useState("");
   const [groupCode, setGroupCode] = useState("");
   const [groupData, setGroupData] = useState(null); // { name, players:[{id,name}], matches:[...] }
   const [tab, setTab] = useState("log");
@@ -1271,6 +1478,7 @@ export default function App() {
   const [unreadChat, setUnreadChat] = useState(0);
   const [feedOpen, setFeedOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState("visual");
   const [authIsAdmin, setAuthIsAdmin] = useState(false);
   const [codeIsAdmin, setCodeIsAdmin] = useState(false);
   const [headerHidden, setHeaderHidden] = useState(false);
@@ -1290,9 +1498,11 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const name = await storageGet("my-name", false);
+      const playerId = await storageGet("my-player-id", false);
       const code = await storageGet("my-group", false);
       const adminUnlock = await storageGet("admin-code-unlocked", false);
       if (name) setMyName(name);
+      if (playerId) setMyPlayerId(playerId);
       if (adminUnlock === "1") setCodeIsAdmin(true);
       if (code) {
         setGroupCode(code);
@@ -1338,7 +1548,21 @@ export default function App() {
         }
       } catch {}
     })();
+
   }, []);
+
+  useEffect(() => {
+    if (!groupData?.players?.length) return;
+    const players = groupData.players || [];
+    const hasCurrentPlayerId = myPlayerId && players.some((player) => player.id === myPlayerId);
+    if (hasCurrentPlayerId) return;
+
+    const byName = players.find((player) => normalizeName(player.name) === normalizeName(myName));
+    if (!byName?.id) return;
+
+    setMyPlayerId(byName.id);
+    storageSet("my-player-id", byName.id, false);
+  }, [groupData?.players, myName, myPlayerId]);
 
   useEffect(() => {
     if (!auth) return;
@@ -1363,8 +1587,6 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  
 
   useEffect(() => {
     if (phase !== "app" || !groupCode) return;
@@ -1444,7 +1666,9 @@ export default function App() {
   const saveGroup = async (data) => {
     setGroupData(data);
     cacheGroupLocally(groupCode, data);
-    await storageSet(`group:${groupCode}`, JSON.stringify(data), true);
+    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(data), true);
+    setStorageOk(Boolean(persisted));
+    return Boolean(persisted);
   };
 
   const normalizeName = (value) => (value || "").trim().toLowerCase();
@@ -1455,9 +1679,18 @@ export default function App() {
   const handleCreateGroup = async (name, groupName) => {
     const trimmedName = name.trim();
     const code = genCode();
+    const firstPlayer = { id: genId(), name: trimmedName, emblemId: "" };
     const data = {
       name: groupName || "Meu Grupo",
-      players: [{ id: genId(), name: trimmedName, emblemId: "" }],
+      fmaPlaylistId: String(FMA_PLAYLISTS[0]?.id || "").trim(),
+      fmaPlayback: {
+        trackIndex: 0,
+        startedAt: Date.now(),
+        paused: false,
+        pausePositionSec: 0,
+        updatedAt: Date.now(),
+      },
+      players: [firstPlayer],
       matches: [],
       messages: [],
       schedules: [],
@@ -1465,8 +1698,10 @@ export default function App() {
       leagueHistory: [],
     };
     setMyName(trimmedName);
+    setMyPlayerId(firstPlayer.id);
     setGroupCode(code);
     await storageSet("my-name", trimmedName, false);
+    await storageSet("my-player-id", firstPlayer.id, false);
     await storageSet("my-group", code, false);
     await storageSet(`group:${code}`, JSON.stringify(data), true);
     cacheGroupLocally(code, data);
@@ -1495,8 +1730,10 @@ export default function App() {
 
     if (existingPlayer) {
       setMyName(existingPlayer.name);
+      setMyPlayerId(existingPlayer.id || "");
       setGroupCode(upper);
       await storageSet("my-name", existingPlayer.name, false);
+      await storageSet("my-player-id", existingPlayer.id || "", false);
       await storageSet("my-group", upper, false);
       cacheGroupLocally(upper, data);
       setGroupData(data);
@@ -1507,11 +1744,14 @@ export default function App() {
       return { ok: true };
     }
 
-    data.players.push({ id: genId(), name: trimmedName, emblemId: "" });
+    const newPlayer = { id: genId(), name: trimmedName, emblemId: "" };
+    data.players.push(newPlayer);
     await storageSet(`group:${upper}`, JSON.stringify(data), true);
     setMyName(trimmedName);
+    setMyPlayerId(newPlayer.id);
     setGroupCode(upper);
     await storageSet("my-name", trimmedName, false);
+    await storageSet("my-player-id", newPlayer.id, false);
     await storageSet("my-group", upper, false);
     cacheGroupLocally(upper, data);
     setGroupData(data);
@@ -1538,12 +1778,65 @@ export default function App() {
   };
 
   const handleSaveMyEmblem = async (emblemId) => {
-    if (!myName || !groupData?.players?.length) return;
+    if (!groupData?.players?.length) return;
     const nextPlayers = (groupData.players || []).map((player) => {
-      if (normalizeName(player.name) !== normalizeName(myName)) return player;
+      const isCurrentById = Boolean(myPlayerId) && String(player.id || "") === String(myPlayerId || "");
+      const isCurrentByName = normalizeName(player.name) === normalizeName(myName);
+      if (!isCurrentById && !isCurrentByName) return player;
       return { ...player, emblemId };
     });
     await saveGroup({ ...groupData, players: nextPlayers });
+  };
+
+  const handleSaveMusicSettings = async ({ playlistId }) => {
+    if (!isAdmin) return { error: "Somente o administrador pode alterar a playlist." };
+    const cleanPlaylistId = String(playlistId || "").trim() || String(FMA_PLAYLISTS[0]?.id || "").trim();
+    const now = Date.now();
+    const ok = await saveGroup({
+      ...groupData,
+      fmaPlaylistId: cleanPlaylistId,
+      fmaPlayback: normalizeFmaPlayback(
+        {
+          trackIndex: 0,
+          startedAt: now,
+          paused: false,
+          pausePositionSec: 0,
+          updatedAt: now,
+        },
+        cleanPlaylistId
+      ),
+    });
+    if (!ok) return { error: "Nao foi possivel salvar a playlist agora." };
+    return { ok: true };
+  };
+
+  const handleSyncMusicPlayback = async (patch: any = {}) => {
+    if (!isAdmin || !groupData) return { error: "Somente o administrador pode controlar a reproducao." };
+
+    const nextPlayback = normalizeFmaPlayback(
+      {
+        ...(groupData?.fmaPlayback || {}),
+        ...patch,
+        updatedAt: Number(patch?.updatedAt || Date.now()),
+      },
+      groupData?.fmaPlaylistId
+    );
+
+    const currentPlayback = normalizeFmaPlayback(groupData?.fmaPlayback || {}, groupData?.fmaPlaylistId);
+    const unchanged =
+      currentPlayback.trackIndex === nextPlayback.trackIndex &&
+      currentPlayback.startedAt === nextPlayback.startedAt &&
+      currentPlayback.paused === nextPlayback.paused &&
+      currentPlayback.pausePositionSec === nextPlayback.pausePositionSec;
+
+    if (unchanged) return { ok: true };
+
+    const ok = await saveGroup({
+      ...groupData,
+      fmaPlayback: nextPlayback,
+    });
+    if (!ok) return { error: "Nao foi possivel sincronizar a musica agora." };
+    return { ok: true };
   };
 
   const handleDeletePlayer = async (playerName) => {
@@ -1779,9 +2072,20 @@ export default function App() {
   };
 
   const handleLeaveGroup = async () => {
+    try {
+      if (auth) {
+        await signOut(auth);
+      }
+    } catch {}
+
     await storageSet("my-group", "", false);
+    await storageSet("my-player-id", "", false);
+    await storageSet("admin-code-unlocked", "", false);
+    setCodeIsAdmin(false);
+    setAuthIsAdmin(false);
     setGroupData(null);
     setGroupCode("");
+    setMyPlayerId("");
     setPhase("join");
   };
 
@@ -1794,7 +2098,9 @@ export default function App() {
     return { ok: true };
   };
 
-  const myEmblemId = getEmblemIdByName(groupData?.players || [], myName);
+  const myEmblemId =
+    (groupData?.players || []).find((player) => String(player?.id || "") === String(myPlayerId || ""))?.emblemId ||
+    getEmblemIdByName(groupData?.players || [], myName);
   const inviteLink = buildInviteLink(groupCode);
 
   const handleTouchStart = (e) => {
@@ -1907,7 +2213,12 @@ export default function App() {
       )}
 
       {phase === "app" && (
-        <div className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+        <div
+          className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           {!storageOk && (
             <div className="md-bg-crimson-20 border-b md-border-crimson-40 md-text-bone text-xs font-inter px-4 py-2 text-center">
               Armazenamento indisponível no momento — trabalhando localmente nesta sessão.
@@ -1926,7 +2237,10 @@ export default function App() {
               setFeedOpen((v) => !v);
               setUnread(0);
             }}
-            onThemeToggle={() => setThemeOpen((v) => !v)}
+            onThemeToggle={() => {
+              setSettingsSection("visual");
+              setThemeOpen((v) => !v);
+            }}
             onLeave={handleLeaveGroup}
           />
 
@@ -1965,7 +2279,11 @@ export default function App() {
                     };
                     const data = { ...groupData, matches: [...groupData.matches, entry] };
                     lastSeenCount.current = data.matches.length;
-                    await saveGroup(data);
+                    const ok = await saveGroup(data);
+                    if (!ok) {
+                      return { error: "Nao foi possivel salvar a partida com foto. Tente novamente com uma imagem menor." };
+                    }
+                    return { ok: true };
                   }}
                 />
                 <UserManagement
@@ -2026,12 +2344,16 @@ export default function App() {
           <ColorSettings
             open={themeOpen}
             onClose={() => setThemeOpen(false)}
+            initialSection={settingsSection}
             myName={myName}
             myEmblemId={myEmblemId}
             onSaveMyEmblem={handleSaveMyEmblem}
           />
           <button
-            onClick={() => setThemeOpen(true)}
+            onClick={() => {
+              setSettingsSection("visual");
+              setThemeOpen(true);
+            }}
             className="fixed right-5 md-safe-float z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)] md-touch-target"
           >
             <span className="inline-flex items-center gap-2"><Settings size={16} /> Temas</span>
@@ -2212,7 +2534,44 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAd
 
 /* ---------------- Header ---------------- */
 
-function Header({ groupName, groupCode, inviteLink = "", myName = "", myEmblemId = "", hidden = false, unread, onBell, onLeave, onThemeToggle }) {
+function Ticker({ matches, players }) {
+  if (!matches.length) return null;
+  const recent = matches.slice(-10).reverse();
+  const items = [...recent, ...recent];
+  return (
+    <div className="md-bg-panel border-b md-border-line overflow-hidden py-1.5">
+      <div className="flex gap-8 whitespace-nowrap md-anim-marquee" style={{ width: "max-content" }}>
+        {items.map((m, i) => {
+          const isDraw = m.scoreA === m.scoreB;
+          const winner = isDraw ? m.playerA : (m.scoreA > m.scoreB ? m.playerA : m.playerB);
+          const loser = isDraw ? m.playerB : (m.scoreA > m.scoreB ? m.playerB : m.playerA);
+          const winnerScore = Math.max(m.scoreA, m.scoreB);
+          const loserScore = Math.min(m.scoreA, m.scoreB);
+          return (
+            <span key={i} className="font-oswald text-sm tracking-wide md-text-muted">
+              <NameWithEmblem name={winner} emblemId={getEmblemIdByName(players, winner)} size={34} />
+              <span className="md-text-amber ml-1">{winnerScore}-{loserScore}</span>
+              <span className="ml-1"><NameWithEmblem name={loser} emblemId={getEmblemIdByName(players, loser)} size={34} /></span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Header({
+  groupName,
+  groupCode,
+  inviteLink = "",
+  myName = "",
+  myEmblemId = "",
+  hidden = false,
+  unread,
+  onBell,
+  onLeave,
+  onThemeToggle,
+}) {
   const [copied, setCopied] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const copy = async () => {
@@ -2285,34 +2644,6 @@ function Header({ groupName, groupCode, inviteLink = "", myName = "", myEmblemId
         </div>
       </div>
     </header>
-  );
-}
-
-/* ---------------- Ticker (scrolling recent results) ---------------- */
-
-function Ticker({ matches, players }) {
-  if (!matches.length) return null;
-  const recent = matches.slice(-10).reverse();
-  const items = [...recent, ...recent];
-  return (
-    <div className="md-bg-panel border-b md-border-line overflow-hidden py-1.5">
-      <div className="flex gap-8 whitespace-nowrap md-anim-marquee" style={{ width: "max-content" }}>
-        {items.map((m, i) => {
-          const isDraw = m.scoreA === m.scoreB;
-          const winner = isDraw ? m.playerA : (m.scoreA > m.scoreB ? m.playerA : m.playerB);
-          const loser = isDraw ? m.playerB : (m.scoreA > m.scoreB ? m.playerB : m.playerA);
-          const winnerScore = Math.max(m.scoreA, m.scoreB);
-          const loserScore = Math.min(m.scoreA, m.scoreB);
-          return (
-            <span key={i} className="font-oswald text-sm tracking-wide md-text-muted">
-              <NameWithEmblem name={winner} emblemId={getEmblemIdByName(players, winner)} size={34} />
-              <span className="md-text-amber ml-1">{winnerScore}-{loserScore}</span>
-              <span className="ml-1"><NameWithEmblem name={loser} emblemId={getEmblemIdByName(players, loser)} size={34} /></span>
-            </span>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -2648,6 +2979,16 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
     setEditingId(null);
   };
 
+  const classifyMediaUrl = (url) => {
+    const value = String(url || "").trim();
+    if (!value) return { kind: "unknown", value };
+    if (value.startsWith("data:image/")) return { kind: "image", value };
+    if (value.startsWith("data:video/")) return { kind: "video", value };
+    if (/\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(value)) return { kind: "image", value };
+    if (/\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(value)) return { kind: "video", value };
+    return { kind: "link", value };
+  };
+
   return (
     <div className="space-y-4">
       <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
@@ -2674,6 +3015,7 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
                     <input type="number" min="0" value={scoreB} onChange={(e) => setScoreB(Number(e.target.value))} className="md-input w-16 rounded-lg px-2 py-2 text-center" />
                   </div>
                   <div className="flex gap-2">
+                    <button onClick={() => { setScoreA(0); setScoreB(0); }} className="md-step-btn flex-1 rounded-lg py-2 text-xs font-oswald">ZERAR</button>
                     <button onClick={saveEdit} className="md-btn-amber flex-1 rounded-lg py-2 text-xs font-oswald">SALVAR</button>
                     <button onClick={() => setEditingId(null)} className="md-step-btn-danger flex-1 rounded-lg py-2 text-xs font-oswald">CANCELAR</button>
                   </div>
@@ -2746,9 +3088,37 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
                     {(match.media || []).length > 0 && (
                       <div className="space-y-1">
                         {(match.media || []).map((url, idx) => (
-                          <a key={`${match.id}-m-${idx}`} href={url} target="_blank" rel="noreferrer" className="text-xs md-link-amber flex items-center gap-1 break-all">
-                            <Video size={12} /> {url}
-                          </a>
+                          (() => {
+                            const media = classifyMediaUrl(url);
+                            if (media.kind === "image") {
+                              return (
+                                <a key={`${match.id}-m-${idx}`} href={media.value} target="_blank" rel="noreferrer" className="block">
+                                  <img
+                                    src={media.value}
+                                    alt={`Midia da partida ${idx + 1}`}
+                                    className="w-full max-h-56 object-cover rounded-lg border border-white/10"
+                                  />
+                                </a>
+                              );
+                            }
+                            if (media.kind === "video") {
+                              return (
+                                <video
+                                  key={`${match.id}-m-${idx}`}
+                                  controls
+                                  preload="metadata"
+                                  className="w-full max-h-56 rounded-lg border border-white/10 bg-black/20"
+                                >
+                                  <source src={media.value} />
+                                </video>
+                              );
+                            }
+                            return (
+                              <a key={`${match.id}-m-${idx}`} href={media.value} target="_blank" rel="noreferrer" className="text-xs md-link-amber flex items-center gap-1 break-all">
+                                <Video size={12} /> Abrir midia anexada
+                              </a>
+                            );
+                          })()
                         ))}
                       </div>
                     )}
@@ -2863,22 +3233,179 @@ function LogMatch({ players, matches, myName, onSubmit }) {
   const [loserName, setLoserName] = useState("");
   const [saving, setSaving] = useState(false);
   const [fireworks, setFireworks] = useState(false);
+  const [error, setError] = useState("");
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const winAudioRef = useRef<HTMLAudioElement | null>(null);
+  const winAudioUnlockedRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const audio = new Audio("/sounds/you-wim.mp3");
+    audio.preload = "auto";
+    audio.volume = 1;
+    winAudioRef.current = audio;
+    return () => {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch {}
+    };
+  }, []);
+
+  const fileToDataUrl = (file) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
+      reader.readAsDataURL(file);
+    });
+
+  const optimizePhotoDataUrl = async (file) => {
+    if (!file?.type?.startsWith("image/")) return "";
+    if (file.type === "image/gif") {
+      return await fileToDataUrl(file);
+    }
+
+    const original = await fileToDataUrl(file);
+    const targetBytes = 260 * 1024;
+    if (original.length <= targetBytes) return original;
+
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Falha ao processar imagem"));
+      image.src = original;
+    });
+
+    const maxSide = 1280;
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return original;
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const qualities = [0.82, 0.72, 0.62, 0.52, 0.45];
+    let best = canvas.toDataURL("image/jpeg", qualities[0]);
+    for (const quality of qualities) {
+      const candidate = canvas.toDataURL("image/jpeg", quality);
+      best = candidate;
+      if (candidate.length <= targetBytes) break;
+    }
+
+    return best;
+  };
+
+  const playWinVoice = () => {
+    const phrase = "YOU WIM";
+
+    const speakOnWeb = () => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(phrase);
+        utter.lang = "en-US";
+        utter.rate = 1;
+        utter.pitch = 1.03;
+        utter.volume = 1;
+        window.speechSynthesis.speak(utter);
+      } catch {}
+    };
+
+    const playLocalFile = () => {
+      const audio = winAudioRef.current;
+      if (!audio) return Promise.reject(new Error("audio indisponivel"));
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.volume = 1;
+      } catch {}
+      return audio.play();
+    };
+
+    playLocalFile().catch(() => {});
+
+    if (!Capacitor.isNativePlatform()) {
+      setTimeout(() => {
+        playLocalFile().catch(() => {
+          speakOnWeb();
+        });
+      }, 220);
+      return;
+    }
+
+    TextToSpeech.stop()
+      .catch(() => {})
+      .then(() => TextToSpeech.speak({
+        text: phrase,
+        lang: "en-US",
+        rate: 1,
+        pitch: 1.03,
+        volume: 1,
+        category: "playback",
+      }))
+      .catch(() => {
+        speakOnWeb();
+      });
+
+    setTimeout(() => {
+      playLocalFile().catch(() => {
+        speakOnWeb();
+      });
+    }, 650);
+  };
+
+  const primeWinAudio = () => {
+    const audio = winAudioRef.current;
+    if (!audio || winAudioUnlockedRef.current) return;
+    try {
+      audio.muted = true;
+      const maybePromise = audio.play();
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise
+          .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.muted = false;
+            winAudioUnlockedRef.current = true;
+          })
+          .catch(() => {
+            audio.muted = false;
+          });
+      } else {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+        winAudioUnlockedRef.current = true;
+      }
+    } catch {
+      audio.muted = false;
+    }
+  };
 
   const handlePickPhoto = () => {
     cameraInputRef.current?.click();
   };
 
   const handlePhotoChange = (event) => {
+    setError("");
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setPhotoDataUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    optimizePhotoDataUrl(file)
+      .then((dataUrl) => {
+        if (!dataUrl) {
+          setError("Nao foi possivel preparar a foto.");
+          return;
+        }
+        setPhotoDataUrl(dataUrl);
+      })
+      .catch(() => {
+        setError("Erro ao processar a foto. Tente outra imagem.");
+      });
   };
 
   useEffect(() => {
@@ -2896,11 +3423,33 @@ function LogMatch({ players, matches, myName, onSubmit }) {
 
   const submit = async () => {
     if (!canSubmit || saving) return;
+    setError("");
     setSaving(true);
     setFireworks(false);
-    await onSubmit({ playerA: a, playerB: b, scoreA: sa, scoreB: sb, photoDataUrl });
+    // Pre-unlock local audio inside the click gesture so playback is immediate when the result animation appears.
+    const shouldPlayWinVoice = sa > sb;
+    if (shouldPlayWinVoice) primeWinAudio();
+    const response = await onSubmit({ playerA: a, playerB: b, scoreA: sa, scoreB: sb, photoDataUrl });
+    if (response?.error) {
+      if (shouldPlayWinVoice && typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (shouldPlayWinVoice) {
+        TextToSpeech.stop().catch(() => {});
+        try {
+          winAudioRef.current?.pause();
+          if (winAudioRef.current) winAudioRef.current.currentTime = 0;
+        } catch {}
+      }
+      setSaving(false);
+      setError(response.error);
+      return;
+    }
     const res = sa > sb ? "win" : sa < sb ? "loss" : "draw";
     setResult(res);
+    if (res === "win") {
+      playWinVoice();
+    }
     setWinnerName(res === "win" ? a : res === "loss" ? b : "");
     setLoserName(res === "loss" ? a : res === "win" ? b : "");
     const fireworksTimer = setTimeout(() => setFireworks(true), 650);
@@ -2914,7 +3463,7 @@ function LogMatch({ players, matches, myName, onSubmit }) {
       setSaving(false);
       setFireworks(false);
       clearTimeout(fireworksTimer);
-    }, 3000);
+    }, 5000);
   };
 
   return (
@@ -2944,6 +3493,7 @@ function LogMatch({ players, matches, myName, onSubmit }) {
                 />
               </div>
               <div className="flex items-center gap-2 text-[11px] font-oswald md-text-muted shrink-0">
+                <span className="rounded-full border border-white/15 px-2 py-0.5">PTS {entry.points}</span>
                 <span className="rounded-full border border-white/15 px-2 py-0.5">SG {entry.goalDiff >= 0 ? "+" : ""}{entry.goalDiff}</span>
                 <span className="rounded-full border border-white/15 px-2 py-0.5">GP {entry.gf}</span>
                 <span className="rounded-full border border-white/15 px-2 py-0.5">AP {entry.efficiency}%</span>
@@ -2973,6 +3523,18 @@ function LogMatch({ players, matches, myName, onSubmit }) {
               <ScoreStepper value={sb} onChange={setSb} />
             </div>
 
+            <button
+              type="button"
+              onClick={() => {
+                setSa(0);
+                setSb(0);
+                setError("");
+              }}
+              className="md-step-btn w-full mt-3 rounded-lg py-2.5 text-xs font-oswald"
+            >
+              ZERAR PLACAR
+            </button>
+
             <div className="mt-3 rounded-lg border border-white/10 bg-black/10 p-3">
               <p className="text-xs md-text-muted mb-2">Foto do placar (opcional)</p>
               <input
@@ -2997,6 +3559,8 @@ function LogMatch({ players, matches, myName, onSubmit }) {
             {a && b && a === b && (
               <p className="md-text-crimson text-sm mt-2 text-center">Escolha dois jogadores diferentes.</p>
             )}
+
+            {error && <p className="md-text-crimson text-sm mt-2 text-center">{error}</p>}
 
             <button
               onClick={submit}

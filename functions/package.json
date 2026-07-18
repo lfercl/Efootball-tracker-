@@ -1,0 +1,12 @@
+{
+  "name": "efootball-tracker-functions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"No build step required\""
+  },
+  "dependencies": {
+    "firebase-admin": "latest",
+    "firebase-functions": "latest"
+  }
+}
