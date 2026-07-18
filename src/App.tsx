@@ -595,9 +595,6 @@ const EMBLEM_OPTIONS = [
   { id: "inter-miami", label: "Inter Miami", url: "https://upload.wikimedia.org/wikipedia/en/5/5c/Inter_Miami_CF_logo.svg" },
   { id: "brasil", label: "Brasil", url: "https://flagcdn.com/w80/br.png" },
   { id: "portugal", label: "Portugal", url: "https://flagcdn.com/w80/pt.png" },
-  { id: "sporting", label: "Sporting", url: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Sporting_Clube_de_Portugal_2026.svg/960px-Sporting_Clube_de_Portugal_2026.svg.png" },
-  { id: "benfica", label: "Benfica", url: "https://upload.wikimedia.org/wikipedia/en/thumb/a/a2/SL_Benfica_logo.svg/1280px-SL_Benfica_logo.svg.png" },
-  { id: "vitoria-guimaraes", label: "Vitoria de Guimaraes", url: "https://upload.wikimedia.org/wikipedia/en/thumb/d/d5/Vit%C3%B3ria_Guimar%C3%A3es.svg/960px-Vit%C3%B3ria_Guimar%C3%A3es.svg.png" },
   { id: "mocambique", label: "Mocambique", url: "https://upload.wikimedia.org/wikipedia/commons/d/d0/Flag_of_Mozambique.svg" },
   { id: "cabo-verde", label: "Cabo Verde", url: "https://flagcdn.com/w80/cv.png" },
 ];
@@ -1031,15 +1028,10 @@ function EmblemBadge({ emblemId, size = 32 }) {
   }
 
   return (
-    <img
-      src={emblem.url}
-      alt={emblem.label}
-      width={size}
-      height={size}
-      className="inline-block rounded-full border border-white/25 bg-white object-contain"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-    />
+    <span className="md-emblem-3d" style={{ "--emblem-size": size + "px" } as React.CSSProperties} title={emblem.label}>
+      <span className="md-emblem-3d__shine" aria-hidden="true" />
+      <img src={emblem.url} alt={emblem.label} className="md-emblem-3d__image" loading="lazy" referrerPolicy="no-referrer" />
+    </span>
   );
 }
 

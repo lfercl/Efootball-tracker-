@@ -6,3 +6,11 @@ html, body, #root { min-height: 100%; margin: 0; }
 body { min-width: 320px; }
 * { box-sizing: border-box; }
 button, input { font: inherit; }
+
+/* Premium 3D treatment shared by every club and country emblem. */
+.md-emblem-3d { --emblem-size:32px; position:relative; isolation:isolate; display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; width:var(--emblem-size); height:var(--emblem-size); overflow:hidden; border:1px solid rgba(255,255,255,.72); border-radius:50%; vertical-align:middle; background:radial-gradient(circle at 34% 24%,#fff 0 12%,#e8edf0 28%,#9ba6ad 58%,#343b40 82%,#111518 100%); box-shadow:0 calc(var(--emblem-size)*.14) calc(var(--emblem-size)*.24) rgba(0,0,0,.48),inset 0 2px 2px rgba(255,255,255,.9),inset 0 -3px 5px rgba(0,0,0,.45); transform:perspective(240px) rotateX(5deg); transition:transform 180ms ease,filter 180ms ease; }
+.md-emblem-3d::before { content:""; position:absolute; z-index:0; inset:8%; border:1px solid rgba(20,24,26,.38); border-radius:inherit; background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(221,226,229,.84)); box-shadow:inset 1px 1px 2px rgba(255,255,255,.95),inset -2px -2px 4px rgba(29,36,40,.3); }
+.md-emblem-3d__image { position:relative; z-index:1; display:block; width:72%; height:72%; object-fit:contain; filter:drop-shadow(0 calc(var(--emblem-size)*.075) calc(var(--emblem-size)*.055) rgba(0,0,0,.5)); }
+.md-emblem-3d__shine { position:absolute; z-index:2; top:7%; left:17%; width:60%; height:34%; pointer-events:none; border-radius:50%; background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(255,255,255,0)); transform:rotate(-10deg); mix-blend-mode:screen; }
+.md-emblem-3d:hover { transform:translateY(-1px) perspective(240px) rotateX(1deg) scale(1.04); filter:saturate(1.1) brightness(1.05); }
+@media (prefers-reduced-motion:reduce){.md-emblem-3d{transition:none}}
