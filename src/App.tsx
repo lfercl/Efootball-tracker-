@@ -2833,18 +2833,45 @@ function Header({
     >
       <div className="md-header-inner max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="md-brand-mark shrink-0 rounded-full border border-amber-200/55 bg-gradient-to-b from-amber-200/20 to-amber-500/10 p-3 shadow-[0_0_24px_rgba(255,182,39,0.45)]">
-            <svg viewBox="0 0 64 64" aria-hidden="true" className="md-brand-icon h-12 w-12 md-text-amber">
-              <path
-                d="M30 6h4c1 0 2 1 2 2v3h4c1 0 2 1 2 2 0 3-1 6-2 8h3c4 0 7-3 8-7h4c0 7-4 13-11 15-1 3-3 5-5 7v6h6c1 0 2 1 2 2v4H24v-4c0-1 1-2 2-2h6v-6c-2-2-4-4-5-7-7-2-11-8-11-15h4c1 4 4 7 8 7h3c-1-2-2-5-2-8 0-1 1-2 2-2h4V8c0-1 1-2 2-2Zm0 6v2h4v-2h-4Zm-5 8c1 6 3 11 7 15 4-4 6-9 7-15h-14Zm-8 0c-3 0-6-2-7-5 1 4 3 7 7 8v-3Zm26 0v3c4-1 6-4 7-8-1 3-4 5-7 5Z"
-                fill="currentColor"
-              />
-              <path d="M20 48h24v4H20z" fill="currentColor" opacity="0.98" />
-              <path d="M23 52h18v4H23z" fill="currentColor" opacity="0.88" />
-              <path d="M27 18h10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity="0.55" />
-            </svg>
-          </div>
-          <div className="md-header-copy min-w-0">
+          <div
+              className="md-brand-mark md-world-cup-mark shrink-0"
+              data-header-trophy="world-cup"
+              title="Troféu da Copa do Mundo"
+            >
+              <svg
+                viewBox="0 0 64 64"
+                className="md-brand-icon md-world-cup-icon"
+                role="img"
+                aria-label="Troféu da Copa do Mundo"
+              >
+                <defs>
+                  <linearGradient id="world-cup-gold" x1="18" y1="5" x2="46" y2="58" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#FFF9B0" />
+                    <stop offset="0.36" stopColor="#FFD84A" />
+                    <stop offset="0.72" stopColor="#E39A00" />
+                    <stop offset="1" stopColor="#8B5200" />
+                  </linearGradient>
+                  <linearGradient id="world-cup-base" x1="24" y1="47" x2="40" y2="59" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#FFF2A0" />
+                    <stop offset="0.52" stopColor="#D99000" />
+                    <stop offset="1" stopColor="#704000" />
+                  </linearGradient>
+                </defs>
+
+                <circle cx="32" cy="14.5" r="9.5" fill="url(#world-cup-gold)" />
+                <path d="M23 14.5h18M32 5c-3 2.8-4.5 5.9-4.5 9.5S29 21.2 32 24m0-19c3 2.8 4.5 5.9 4.5 9.5S35 21.2 32 24" fill="none" stroke="#FFF8C7" strokeWidth="1.35" strokeLinecap="round" opacity="0.9" />
+                <path
+                  d="M25.7 20.7c-1.2 5.3-5.3 8.3-4.7 14.1.5 5.2 4.1 8.6 7.8 10.9l-1.5 5.5h9.4l-1.5-5.5c3.7-2.3 7.3-5.7 7.8-10.9.6-5.8-3.5-8.8-4.7-14.1-2 3.1-3.8 5.2-6.3 6.8-2.5-1.6-4.3-3.7-6.3-6.8Z"
+                  fill="url(#world-cup-gold)"
+                />
+                <path d="M27.3 24.5c-1.6 3.6-4 6.4-3.5 10.2.4 3.2 2.6 5.7 5.5 7.6M36.7 24.5c1.6 3.6 4 6.4 3.5 10.2-.4 3.2-2.6 5.7-5.5 7.6" fill="none" stroke="#8B5700" strokeWidth="1.7" strokeLinecap="round" opacity="0.78" />
+                <path d="M27.2 47.7h9.6l2.2 6.2H25l2.2-6.2Z" fill="url(#world-cup-base)" />
+                <rect x="22" y="53" width="20" height="6.5" rx="2.8" fill="url(#world-cup-base)" />
+                <path d="M25.5 55.3h13" stroke="#FFF2A0" strokeWidth="1.1" strokeLinecap="round" opacity="0.82" />
+              </svg>
+              <span className="md-world-cup-shine" aria-hidden="true" />
+            </div>
+            <div className="md-header-copy min-w-0">
             <p className="md-group-title font-oswald text-sm tracking-wide truncate md-text-bone">{groupName || "GRUPO"}</p>
             {myName && (
               <div className="md-user-pill mt-1 inline-flex max-w-full items-center gap-2 rounded-full border border-amber-300/60 bg-amber-400/18 px-4 py-1.5 shadow-[0_0_24px_rgba(255,182,39,0.45)] md-anim-user-blink">

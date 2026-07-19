@@ -680,3 +680,103 @@ body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
     margin-left: auto;
   }
 }
+
+
+/* Header World Cup trophy: dark showcase with a high-contrast gold silhouette. */
+.md-efootball-ui .md-world-cup-mark {
+  position: relative;
+  display: grid !important;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  place-items: center;
+  overflow: hidden;
+  padding: 7px !important;
+  border: 2px solid rgba(255, 216, 74, 0.96) !important;
+  border-radius: 10px 24px 10px 24px !important;
+  color: #ffd84a !important;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(0, 167, 255, 0.36), transparent 42%),
+    linear-gradient(145deg, #142c9d 0%, #071044 58%, #02051f 100%) !important;
+  box-shadow:
+    0 0 0 3px rgba(31, 67, 224, 0.28),
+    0 0 32px rgba(255, 216, 74, 0.28),
+    inset 0 1px rgba(255, 255, 255, 0.2) !important;
+  transform: none !important;
+}
+
+.md-efootball-ui .md-world-cup-mark::before {
+  position: absolute;
+  top: -45%;
+  left: -62%;
+  width: 52%;
+  height: 190%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  content: "";
+  pointer-events: none;
+  transform: rotate(20deg);
+  animation: md-world-cup-shimmer 5.8s ease-in-out 1s infinite;
+}
+
+.md-efootball-ui .md-world-cup-icon {
+  position: relative;
+  z-index: 2;
+  width: 56px;
+  height: 56px;
+  overflow: visible;
+  color: #ffd84a !important;
+  filter:
+    drop-shadow(0 2px 0 rgba(64, 34, 0, 0.85))
+    drop-shadow(0 0 8px rgba(255, 216, 74, 0.58));
+  transform: none !important;
+}
+
+.md-efootball-ui .md-world-cup-shine {
+  position: absolute;
+  z-index: 1;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 216, 74, 0.14);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+@keyframes md-world-cup-shimmer {
+  0%,
+  62%,
+  100% {
+    left: -62%;
+    opacity: 0;
+  }
+
+  72% {
+    opacity: 1;
+  }
+
+  86% {
+    left: 120%;
+    opacity: 0;
+  }
+}
+
+@media (max-width: 639px) {
+  .md-efootball-ui .md-world-cup-mark {
+    width: 56px;
+    height: 56px;
+    flex-basis: 56px;
+    padding: 5px !important;
+    border-radius: 7px 17px 7px 17px !important;
+  }
+
+  .md-efootball-ui .md-world-cup-icon {
+    width: 46px;
+    height: 46px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-efootball-ui .md-world-cup-mark::before {
+    animation: none !important;
+  }
+}
