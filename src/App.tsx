@@ -3514,22 +3514,22 @@ function LogMatch({ players, matches, myName, onSubmit }) {
 
         <div className="space-y-2">
           {rankedPlayers.map((entry, idx) => (
-            <div key={entry.name} className="flex items-center justify-between rounded-lg px-3 py-2 md-bg-panel-dark-40">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-oswald text-xs md-text-amber shrink-0">#{idx + 1}</span>
+            <div key={entry.name} className="md-player-rank-row rounded-lg px-3 py-3 md-bg-panel-dark-40">
+              <div className="md-player-rank-identity flex items-center gap-2 min-w-0">
+                <span className="md-player-rank-position font-oswald text-xs md-text-amber shrink-0">#{idx + 1}</span>
                 <NameWithEmblem
                   name={entry.name}
                   emblemId={getEmblemIdByName(players, entry.name)}
                   size={38}
-                  className="min-w-0"
-                  textClassName="truncate"
+                  className="md-player-rank-name-wrap min-w-0 flex-1"
+                  textClassName="md-player-rank-name font-oswald md-text-bone"
                 />
               </div>
-              <div className="flex items-center gap-2 text-[11px] font-oswald md-text-muted shrink-0">
-                <span className="rounded-full border border-white/15 px-2 py-0.5">PTS {entry.points}</span>
-                <span className="rounded-full border border-white/15 px-2 py-0.5">SG {entry.goalDiff >= 0 ? "+" : ""}{entry.goalDiff}</span>
-                <span className="rounded-full border border-white/15 px-2 py-0.5">GP {entry.gf}</span>
-                <span className="rounded-full border border-white/15 px-2 py-0.5">AP {entry.efficiency}%</span>
+              <div className="md-player-rank-stats grid grid-cols-4 gap-1.5 text-[11px] font-oswald md-text-muted">
+                <span className="rounded-full border border-white/15 px-2 py-1 text-center">PTS {entry.points}</span>
+                <span className="rounded-full border border-white/15 px-2 py-1 text-center">SG {entry.goalDiff >= 0 ? "+" : ""}{entry.goalDiff}</span>
+                <span className="rounded-full border border-white/15 px-2 py-1 text-center">GP {entry.gf}</span>
+                <span className="rounded-full border border-white/15 px-2 py-1 text-center">AP {entry.efficiency}%</span>
               </div>
             </div>
           ))}
