@@ -171,7 +171,7 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white/5 rounded-xl p-5 md-border md-border-line max-h-[90vh] overflow-y-auto">
+      <div className="md-settings-modal relative w-full max-w-2xl bg-white/5 rounded-xl p-5 md-border md-border-line max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-oswald text-2xl md-text-bone">Configuracoes</h3>
           <div className="flex gap-2">
@@ -2387,9 +2387,10 @@ export default function App() {
               setSettingsSection("visual");
               setThemeOpen(true);
             }}
-            className="fixed right-5 md-safe-float z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)] md-touch-target"
+            className="md-theme-fab fixed right-5 md-safe-float z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)] md-touch-target"
+            aria-label="Abrir temas"
           >
-            <span className="inline-flex items-center gap-2"><Settings size={16} /> Temas</span>
+            <span className="md-theme-fab-content inline-flex items-center gap-2"><Settings size={18} /> <span className="md-theme-fab-label">Temas</span></span>
           </button>
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
             {toasts.map((t) => (
@@ -2460,9 +2461,9 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAd
   };
 
   return (
-    <div className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost flex items-center justify-center px-4">
+    <div className="md-join-shell min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost flex items-center justify-center px-4">
       <GlobalStyle />
-      <div className="w-full max-w-sm">
+      <div className="md-join-card w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full md-bg-amber-10 md-border md-border-amber-30 mb-3 md-anim-trophy-rise-drop">
             <Trophy size={26} className="md-text-amber" />
@@ -2572,7 +2573,7 @@ function Ticker({ matches, players }) {
   const recent = matches.slice(-10).reverse();
   const items = [...recent, ...recent];
   return (
-    <div className="md-bg-panel border-b md-border-line overflow-hidden py-1.5">
+    <div className="md-score-ticker md-bg-panel border-b md-border-line overflow-hidden py-1.5">
       <div className="flex gap-8 whitespace-nowrap md-anim-marquee" style={{ width: "max-content" }}>
         {items.map((m, i) => {
           const isDraw = m.scoreA === m.scoreB;
@@ -2581,7 +2582,7 @@ function Ticker({ matches, players }) {
           const winnerScore = Math.max(m.scoreA, m.scoreB);
           const loserScore = Math.min(m.scoreA, m.scoreB);
           return (
-            <span key={i} className="font-oswald text-sm tracking-wide md-text-muted">
+            <span key={i} className="md-ticker-item font-oswald text-sm tracking-wide md-text-muted">
               <NameWithEmblem name={winner} emblemId={getEmblemIdByName(players, winner)} size={34} />
               <span className="md-text-amber ml-1">{winnerScore}-{loserScore}</span>
               <span className="ml-1"><NameWithEmblem name={loser} emblemId={getEmblemIdByName(players, loser)} size={34} /></span>
@@ -2624,10 +2625,10 @@ function Header({
   };
   return (
     <header className={`border-b md-border-line md-bg-panel-dark-80 sticky top-0 z-40 transition-transform duration-300 ${hidden ? "-translate-y-full" : "translate-y-0"}`}>
-      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="md-header-inner max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="shrink-0 rounded-full border border-amber-200/55 bg-gradient-to-b from-amber-200/20 to-amber-500/10 p-3 shadow-[0_0_24px_rgba(255,182,39,0.45)]">
-            <svg viewBox="0 0 64 64" aria-hidden="true" className="h-12 w-12 md-text-amber">
+          <div className="md-brand-mark shrink-0 rounded-full border border-amber-200/55 bg-gradient-to-b from-amber-200/20 to-amber-500/10 p-3 shadow-[0_0_24px_rgba(255,182,39,0.45)]">
+            <svg viewBox="0 0 64 64" aria-hidden="true" className="md-brand-icon h-12 w-12 md-text-amber">
               <path
                 d="M30 6h4c1 0 2 1 2 2v3h4c1 0 2 1 2 2 0 3-1 6-2 8h3c4 0 7-3 8-7h4c0 7-4 13-11 15-1 3-3 5-5 7v6h6c1 0 2 1 2 2v4H24v-4c0-1 1-2 2-2h6v-6c-2-2-4-4-5-7-7-2-11-8-11-15h4c1 4 4 7 8 7h3c-1-2-2-5-2-8 0-1 1-2 2-2h4V8c0-1 1-2 2-2Zm0 6v2h4v-2h-4Zm-5 8c1 6 3 11 7 15 4-4 6-9 7-15h-14Zm-8 0c-3 0-6-2-7-5 1 4 3 7 7 8v-3Zm26 0v3c4-1 6-4 7-8-1 3-4 5-7 5Z"
                 fill="currentColor"
@@ -2637,10 +2638,10 @@ function Header({
               <path d="M27 18h10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity="0.55" />
             </svg>
           </div>
-          <div className="min-w-0">
-            <p className="font-oswald text-sm tracking-wide truncate md-text-bone">{groupName || "GRUPO"}</p>
+          <div className="md-header-copy min-w-0">
+            <p className="md-group-title font-oswald text-sm tracking-wide truncate md-text-bone">{groupName || "GRUPO"}</p>
             {myName && (
-              <div className="mt-1 inline-flex max-w-full items-center gap-2 rounded-full border border-amber-300/60 bg-amber-400/18 px-4 py-1.5 shadow-[0_0_24px_rgba(255,182,39,0.45)] md-anim-user-blink">
+              <div className="md-user-pill mt-1 inline-flex max-w-full items-center gap-2 rounded-full border border-amber-300/60 bg-amber-400/18 px-4 py-1.5 shadow-[0_0_24px_rgba(255,182,39,0.45)] md-anim-user-blink">
                 <span className="text-xs font-oswald tracking-[0.34em] md-text-amber shrink-0">LOGADO</span>
                 <NameWithEmblem
                   name={myName}
@@ -2661,17 +2662,17 @@ function Header({
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button onClick={onThemeToggle} className="md-icon-btn p-2 rounded-full mr-1">
+        <div className="md-header-actions flex items-center gap-1 shrink-0">
+          <button onClick={onThemeToggle} className="md-header-action md-icon-btn p-2 rounded-full mr-1" aria-label="Abrir temas">
             <Settings size={16} className="md-text-muted" />
           </button>
-          <button onClick={onBell} className="md-icon-btn relative p-2 rounded-full">
+          <button onClick={onBell} className="md-header-action md-icon-btn relative p-2 rounded-full" aria-label="Abrir notificações">
             <Bell size={18} className="md-text-bone" />
             {unread > 0 && (
               <span className="absolute top-0.5 right-0.5 w-2 h-2 md-bg-crimson rounded-full" />
             )}
           </button>
-          <button onClick={onLeave} className="md-icon-btn p-2 rounded-full">
+          <button onClick={onLeave} className="md-header-action md-icon-btn p-2 rounded-full" aria-label="Sair do grupo">
             <LogOut size={16} className="md-text-muted" />
           </button>
         </div>
@@ -2732,7 +2733,7 @@ function Tabs({ tab, setTab, unreadChat = 0 }) {
     { id: "h2h", label: "Confronto", icon: <Swords size={15} /> },
   ];
   return (
-    <div className="max-w-2xl mx-auto px-4 pt-4">
+    <div className="md-nav-shell max-w-2xl mx-auto px-4 pt-4">
       <div className="md-tabs-row md-bg-panel md-border md-border-line rounded-lg p-1">
         <div className="md-tabs-inner">
         {items.map((it) => (
