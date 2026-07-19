@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { Capacitor } from "@capacitor/core";
@@ -3248,6 +3249,56 @@ function ChatRoom({ messages, myName, players, onSendMessage }) {
 
 /* ---------------- Results Management ---------------- */
 
+function ResultPhotoLightbox({ src, onClose }) {
+  useEffect(() => {
+    if (!src) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [src, onClose]);
+
+  if (!src) return null;
+
+  return createPortal(
+    <div
+      className="md-result-photo-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Fotografia do resultado"
+      onClick={onClose}
+      onTouchStart={(event) => event.stopPropagation()}
+      onTouchMove={(event) => event.stopPropagation()}
+      onTouchEnd={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="md-result-photo-close md-touch-target"
+        onClick={onClose}
+        aria-label="Fechar fotografia"
+      >
+        <X size={24} />
+        <span>Fechar</span>
+      </button>
+
+      <div className="md-result-photo-stage" onClick={(event) => event.stopPropagation()}>
+        <img src={src} alt="Fotografia do resultado em tamanho completo" />
+        <p>Fotografia do resultado</p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVoteMvp, onAddMedia }) {
   const [editingId, setEditingId] = useState(null);
   const [playerA, setPlayerA] = useState("");
@@ -3255,6 +3306,7 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
   const [scoreA, setScoreA] = useState(0);
   const [scoreB, setScoreB] = useState(0);
   const [mediaInputByMatch, setMediaInputByMatch] = useState({});
+  const [previewPhoto, setPreviewPhoto] = useState(null);
 
   const shareMatch = async (match) => {
     const baseText = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB} | Matchday Ledger`;
@@ -3325,6 +3377,7 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
 
   return (
     <div className="space-y-4">
+      <ResultPhotoLightbox src={previewPhoto} onClose={() => setPreviewPhoto(null)} />
       <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
         <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">RESULTADOS DO GRUPO</h3>
         <div className="space-y-2">
@@ -3426,13 +3479,20 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
                             const media = classifyMediaUrl(url);
                             if (media.kind === "image") {
                               return (
-                                <a key={`${match.id}-m-${idx}`} href={media.value} target="_blank" rel="noreferrer" className="block">
-                                  <img
-                                    src={media.value}
-                                    alt={`Midia da partida ${idx + 1}`}
-                                    className="w-full max-h-56 object-cover rounded-lg border border-white/10"
-                                  />
-                                </a>
+                                <button
+                          key={`${match.id}-m-${idx}`}
+                          type="button"
+                          onClick={() => setPreviewPhoto(media.value)}
+                          className="md-result-photo-button block w-full"
+                          aria-label={`Abrir fotografia da partida ${idx + 1}`}
+                        >
+                          <img
+                            src={media.value}
+                            alt={`Fotografia da partida ${idx + 1}`}
+                            className="w-full max-h-56 object-cover rounded-lg border border-white/10"
+                          />
+                          <span className="md-result-photo-hint">Abrir foto</span>
+                        </button>
                               );
                             }
                             if (media.kind === "video") {
