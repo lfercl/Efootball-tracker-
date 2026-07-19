@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { jsPDF } from "jspdf";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { Capacitor } from "@capacitor/core";
@@ -319,6 +320,8 @@ import {
   Video,
   Link2,
   ImagePlus,
+  Download,
+  FileText,
   Crown,
   ArrowUp,
   MoreHorizontal,
@@ -1084,6 +1087,340 @@ async function generateChampionPoster({ leagueName, championName, emblemUrl, ach
 
   return canvas.toDataURL("image/png");
 }
+
+function cleanPdfText(value) {
+  return String(value ?? "")
+    .replace(/[^\x20-\x7EÀ-ÿ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function competitionReportFilename(item) {
+  const slug = cleanPdfText(item?.name || "torneio")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `relatorio-${slug || "torneio"}-${item?.id || "final"}.pdf`;
+}
+
+function createCompetitionPdfBlob(item) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const standings = Array.isArray(item?.standings) ? item.standings : [];
+  const matches = Array.isArray(item?.matches) ? item.matches : [];
+  const achievements = Array.isArray(item?.achievements) ? item.achievements : [];
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 14;
+  const navy = [5, 9, 47];
+  const blue = [25, 52, 170];
+  const yellow = [231, 255, 0];
+  const ink = [15, 23, 42];
+  const muted = [91, 105, 128];
+  const line = [219, 226, 239];
+  const white = [255, 255, 255];
+  const finishedAt = Number(item?.finishedAt || Date.now());
+  const champion = item?.champion || standings[0] || {};
+  const totalGoals = matches.length
+    ? matches.reduce((sum, match) => sum + Number(match.scoreA || 0) + Number(match.scoreB || 0), 0)
+    : standings.reduce((sum, entry) => sum + Number(entry.gf || 0), 0);
+  const draws = matches.length
+    ? matches.filter((match) => Number(match.scoreA) === Number(match.scoreB)).length
+    : Math.round(standings.reduce((sum, entry) => sum + Number(entry.draws || 0), 0) / 2);
+  const bestAttack = [...standings].sort((a, b) => Number(b.gf || 0) - Number(a.gf || 0))[0];
+  const played = standings.filter((entry) => Number(entry.played || 0) > 0);
+  const bestDefense = [...played].sort((a, b) => Number(a.ga || 0) - Number(b.ga || 0))[0];
+
+  doc.setProperties({
+    title: `Relatorio oficial - ${cleanPdfText(item?.name || "Competicao")}`,
+    subject: "Classificacao, resultados e estatisticas da competicao",
+    author: "eFootball Rivals",
+    creator: "Matchday Ledger",
+  });
+
+  const drawPageBase = (section = "RELATORIO OFICIAL") => {
+    doc.setFillColor(...white);
+    doc.rect(0, 0, pageWidth, pageHeight, "F");
+    doc.setFillColor(...navy);
+    doc.rect(0, 0, pageWidth, 23, "F");
+    doc.setFillColor(...yellow);
+    doc.rect(0, 23, pageWidth, 2.2, "F");
+    doc.setTextColor(...white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("EFOOTBALL RIVALS", margin, 10);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(cleanPdfText(section), pageWidth - margin, 10, { align: "right" });
+  };
+
+  const addPage = (section) => {
+    doc.addPage();
+    drawPageBase(section);
+    return 34;
+  };
+
+  const sectionTitle = (title, y) => {
+    doc.setTextColor(...navy);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(cleanPdfText(title).toUpperCase(), margin, y);
+    doc.setDrawColor(...yellow);
+    doc.setLineWidth(1.1);
+    doc.line(margin, y + 2.5, margin + 34, y + 2.5);
+    return y + 9;
+  };
+
+  drawPageBase();
+  doc.setFillColor(...navy);
+  doc.rect(0, 25.2, pageWidth, 57, "F");
+  doc.setTextColor(...yellow);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("TORNEIO CONCLUIDO", margin, 38);
+  doc.setTextColor(...white);
+  doc.setFontSize(25);
+  const titleLines = doc.splitTextToSize(cleanPdfText(item?.name || "Competicao"), 178).slice(0, 2);
+  doc.text(titleLines, margin, 52);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(202, 212, 255);
+  doc.text(`Encerrado em ${new Date(finishedAt).toLocaleString("pt-PT")}`, margin, 75);
+
+  doc.setFillColor(246, 248, 255);
+  doc.setDrawColor(111, 132, 230);
+  doc.roundedRect(margin, 91, 182, 35, 3, 3, "FD");
+  doc.setTextColor(...blue);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("CAMPEAO", margin + 7, 102);
+  doc.setTextColor(...navy);
+  doc.setFontSize(19);
+  doc.text(cleanPdfText(champion?.name || "Campeao"), margin + 7, 114);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...muted);
+  doc.text(
+    `${Number(champion?.points || 0)} pontos | ${Number(champion?.wins || 0)} vitorias | Premio: ${cleanPdfText(item?.prize || "Nao informado")}`,
+    margin + 7,
+    121,
+  );
+
+  const tiles = [
+    ["JOGOS", String(Number(item?.matchesCount || matches.length || 0))],
+    ["GOLS", String(totalGoals)],
+    ["MEDIA / JOGO", matches.length ? (totalGoals / matches.length).toFixed(2) : "0.00"],
+    ["EMPATES", String(draws)],
+  ];
+  tiles.forEach(([label, value], index) => {
+    const x = margin + index * 46;
+    doc.setFillColor(index % 2 === 0 ? 5 : 25, index % 2 === 0 ? 9 : 52, index % 2 === 0 ? 47 : 170);
+    doc.roundedRect(x, 134, 42, 24, 2.5, 2.5, "F");
+    doc.setTextColor(...yellow);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(value, x + 21, 145, { align: "center" });
+    doc.setTextColor(...white);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(label, x + 21, 152, { align: "center" });
+  });
+
+  let y = sectionTitle("Classificacao final", 171);
+  const columns = [
+    ["#", 9],
+    ["JOGADOR", 53],
+    ["J", 13],
+    ["V", 13],
+    ["E", 13],
+    ["D", 13],
+    ["GP", 14],
+    ["GC", 14],
+    ["SG", 15],
+    ["PTS", 19],
+  ];
+  const drawStandingsHeader = () => {
+    let x = margin;
+    doc.setFillColor(...navy);
+    doc.rect(margin, y, 182, 8, "F");
+    doc.setTextColor(...white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    columns.forEach(([label, width]) => {
+      doc.text(label, label === "JOGADOR" ? x + 2 : x + width / 2, y + 5.3, {
+        align: label === "JOGADOR" ? "left" : "center",
+      });
+      x += width;
+    });
+    y += 8;
+  };
+  drawStandingsHeader();
+
+  standings.forEach((entry, index) => {
+    if (y > 270) {
+      y = addPage("CLASSIFICACAO FINAL");
+      drawStandingsHeader();
+    }
+    let x = margin;
+    doc.setFillColor(index % 2 === 0 ? 247 : 255, index % 2 === 0 ? 249 : 255, 253);
+    doc.rect(margin, y, 182, 8, "F");
+    doc.setTextColor(...ink);
+    doc.setFont("helvetica", index === 0 ? "bold" : "normal");
+    doc.setFontSize(7.3);
+    const values = [
+      index + 1,
+      cleanPdfText(entry.name).slice(0, 25),
+      Number(entry.played || 0),
+      Number(entry.wins || 0),
+      Number(entry.draws || 0),
+      Number(entry.losses || 0),
+      Number(entry.gf || 0),
+      Number(entry.ga || 0),
+      Number(entry.gd || 0),
+      Number(entry.points || 0),
+    ];
+    values.forEach((value, valueIndex) => {
+      const width = columns[valueIndex][1];
+      doc.text(String(value), valueIndex === 1 ? x + 2 : x + width / 2, y + 5.3, {
+        align: valueIndex === 1 ? "left" : "center",
+      });
+      x += width;
+    });
+    doc.setDrawColor(...line);
+    doc.line(margin, y + 8, 196, y + 8);
+    y += 8;
+  });
+
+  y += 7;
+  if (y > 250) y = addPage("DESTAQUES");
+  y = sectionTitle("Destaques do torneio", y);
+  const highlights = [
+    ["Melhor ataque", bestAttack ? `${cleanPdfText(bestAttack.name)} - ${Number(bestAttack.gf || 0)} gols` : "Sem dados"],
+    ["Melhor defesa", bestDefense ? `${cleanPdfText(bestDefense.name)} - ${Number(bestDefense.ga || 0)} sofridos` : "Sem dados"],
+    ["Maior pontuacao", champion?.name ? `${cleanPdfText(champion.name)} - ${Number(champion.points || 0)} pontos` : "Sem dados"],
+    ["Premio", cleanPdfText(item?.prize || "Nao informado")],
+  ];
+  highlights.forEach(([label, value], index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = margin + col * 92;
+    const boxY = y + row * 19;
+    doc.setFillColor(247, 249, 253);
+    doc.roundedRect(x, boxY, 88, 15, 2, 2, "F");
+    doc.setTextColor(...muted);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.text(cleanPdfText(label).toUpperCase(), x + 4, boxY + 5);
+    doc.setTextColor(...ink);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.4);
+    doc.text(cleanPdfText(value).slice(0, 42), x + 4, boxY + 11);
+  });
+  y += 44;
+
+  if (achievements.length) {
+    if (y > 245) y = addPage("PREMIOS E CONQUISTAS");
+    y = sectionTitle("Premios e conquistas", y);
+    achievements.forEach((award) => {
+      if (y > 272) y = addPage("PREMIOS E CONQUISTAS");
+      doc.setFillColor(248, 250, 255);
+      doc.roundedRect(margin, y, 182, 9, 1.5, 1.5, "F");
+      doc.setTextColor(...blue);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text(cleanPdfText(award.player || "Jogador").slice(0, 28), margin + 4, y + 5.8);
+      doc.setTextColor(...ink);
+      doc.setFont("helvetica", "normal");
+      doc.text(cleanPdfText(award.title || "Conquista").slice(0, 62), margin + 61, y + 5.8);
+      y += 11;
+    });
+  }
+
+  if (matches.length) {
+    y = addPage("RESULTADOS");
+    y = sectionTitle("Resultados completos", y);
+    const matchHeader = () => {
+      doc.setFillColor(...navy);
+      doc.rect(margin, y, 182, 8, "F");
+      doc.setTextColor(...white);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.text("DATA", margin + 2, y + 5.3);
+      doc.text("JOGADOR A", margin + 32, y + 5.3);
+      doc.text("RESULTADO", margin + 93, y + 5.3, { align: "center" });
+      doc.text("JOGADOR B", margin + 111, y + 5.3);
+      doc.text("MVP", margin + 154, y + 5.3);
+      y += 8;
+    };
+    matchHeader();
+    matches.forEach((match, index) => {
+      if (y > 272) {
+        y = addPage("RESULTADOS");
+        matchHeader();
+      }
+      doc.setFillColor(index % 2 === 0 ? 247 : 255, index % 2 === 0 ? 249 : 255, 253);
+      doc.rect(margin, y, 182, 8, "F");
+      doc.setTextColor(...ink);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.1);
+      const date = Number(match.ts || 0) ? new Date(Number(match.ts)).toLocaleDateString("pt-PT") : "-";
+      doc.text(date, margin + 2, y + 5.3);
+      doc.text(cleanPdfText(match.playerA || "-").slice(0, 21), margin + 32, y + 5.3);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${Number(match.scoreA || 0)} - ${Number(match.scoreB || 0)}`, margin + 93, y + 5.3, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.text(cleanPdfText(match.playerB || "-").slice(0, 21), margin + 111, y + 5.3);
+      doc.text(cleanPdfText(match.mvp || "-").slice(0, 16), margin + 154, y + 5.3);
+      y += 8;
+    });
+  }
+
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(...line);
+    doc.line(margin, 286, pageWidth - margin, 286);
+    doc.setTextColor(...muted);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Matchday Ledger - Relatorio oficial da competicao", margin, 291);
+    doc.text(`Pagina ${page} de ${pages}`, pageWidth - margin, 291, { align: "right" });
+  }
+
+  return doc.output("blob");
+}
+
+function downloadCompetitionPdf(item) {
+  const blob = createCompetitionPdfBlob(item);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = competitionReportFilename(item);
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  return blob;
+}
+
+async function shareCompetitionPdf(item) {
+  const blob = createCompetitionPdfBlob(item);
+  const file = new File([blob], competitionReportFilename(item), { type: "application/pdf" });
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({
+      title: `Relatorio da competicao ${item?.name || ""}`,
+      text: `Classificacao, resultados e estatisticas da competicao ${item?.name || ""}`,
+      files: [file],
+    });
+    return "shared";
+  }
+  downloadCompetitionPdf(item);
+  return "downloaded";
+}
+
 
 function getEmblemIdByName(players, name) {
   return players.find((p) => p.name === name)?.emblemId || "";
@@ -2132,37 +2469,45 @@ export default function App() {
   };
 
   const finalizeLeague = async () => {
-    if (finalizingLeagueRef.current) return;
+    if (finalizingLeagueRef.current) return { error: "A finalizacao ja esta em andamento." };
     finalizingLeagueRef.current = true;
     try {
       const league = groupData?.activeLeague;
-      if (!league) return;
+      if (!league) return { error: "Nao existe uma competicao ativa." };
 
       const leagueMatches = getLeagueMatches(groupData?.matches || [], league);
       if (!leagueMatches.length) {
-        await saveGroup({ ...groupData, activeLeague: null });
-        return;
+        const error = "Registe pelo menos uma partida antes de terminar o torneio.";
+        pushToast({ title: "Torneio nao terminado", body: error });
+        return { error };
       }
 
       const standings = sortStandings(computeStats(groupData?.players || [], leagueMatches));
       const champion = standings[0];
       if (!champion) {
-        await saveGroup({ ...groupData, activeLeague: null });
-        return;
+        const error = "Nao foi possivel calcular o campeao desta competicao.";
+        pushToast({ title: "Torneio nao terminado", body: error });
+        return { error };
       }
 
       const championEmblemId = getEmblemIdByName(groupData?.players || [], champion.name);
-      const championEmblem = EMBLEM_MAP[championEmblemId];
       const allAchievements = computeAchievements(groupData?.players || [], leagueMatches);
-      const championAchievements = allAchievements.filter((item) => item.player === champion.name);
-      const posterDataUrl = await generateChampionPoster({
-        leagueName: league.name,
-        championName: champion.name,
-        emblemUrl: championEmblem?.url || "",
-        achievements: championAchievements,
-        points: champion.points,
-        wins: champion.wins,
-        prize: league.prize || "",
+      const totalGoals = leagueMatches.reduce(
+        (sum, match) => sum + Number(match.scoreA || 0) + Number(match.scoreB || 0),
+        0,
+      );
+      const matchSummaries = leagueMatches.map((match) => {
+        const votes = getEffectiveMvpVotes(match);
+        const topVote = Object.entries(votes).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+        return {
+          id: match.id,
+          playerA: match.playerA,
+          playerB: match.playerB,
+          scoreA: Number(match.scoreA || 0),
+          scoreB: Number(match.scoreB || 0),
+          ts: Number(match.ts || 0),
+          mvp: Number(topVote?.[1] || 0) > 0 ? topVote[0] : "",
+        };
       });
 
       const archiveEntry = {
@@ -2181,9 +2526,13 @@ export default function App() {
           points: champion.points,
           wins: champion.wins,
         },
-        achievements: championAchievements,
-        posterDataUrl,
+        achievements: allAchievements,
         standings,
+        matches: matchSummaries,
+        summary: {
+          totalGoals,
+          draws: leagueMatches.filter((match) => Number(match.scoreA) === Number(match.scoreB)).length,
+        },
       };
 
       await saveGroup({
@@ -2194,32 +2543,18 @@ export default function App() {
 
       pushToast({
         title: "Competicao encerrada",
-        body: `${champion.name} e o campeao da ${league.name}`,
+        body: `${champion.name} e o campeao da ${league.name}. O PDF esta pronto.`,
       });
+      return { ok: true, archiveEntry };
+    } catch (error) {
+      console.error("Falha ao finalizar competicao", error);
+      const message = "Nao foi possivel terminar o torneio. Tente novamente.";
+      pushToast({ title: "Erro ao terminar torneio", body: message });
+      return { error: message };
     } finally {
       finalizingLeagueRef.current = false;
     }
   };
-
-  useEffect(() => {
-    const league = groupData?.activeLeague;
-    if (!league) return;
-    const completion = getLeagueCompletionInfo(league, groupData?.matches || []);
-    if (!completion.done) return;
-    finalizeLeague();
-  }, [groupData?.activeLeague, groupData?.matches]);
-
-  useEffect(() => {
-    const league = groupData?.activeLeague;
-    if (!league || league.mode !== "time") return;
-    const timer = setInterval(() => {
-      const completion = getLeagueCompletionInfo(league, groupData?.matches || []);
-      if (completion.done) {
-        finalizeLeague();
-      }
-    }, 15000);
-    return () => clearInterval(timer);
-  }, [groupData?.activeLeague, groupData?.matches]);
 
   useEffect(() => {
     const hasGroup = Boolean(groupData);
@@ -4118,6 +4453,8 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
   const [targetMatches, setTargetMatches] = useState(10);
   const [targetDate, setTargetDate] = useState("");
   const [error, setError] = useState("");
+  const [finalizing, setFinalizing] = useState(false);
+  const [reportStatus, setReportStatus] = useState("");
 
   const submitLeague = async () => {
     setError("");
@@ -4157,6 +4494,52 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
     if (!activeLeague) return [];
     return estimateChampionProbabilities(players || [], matches, activeLeague);
   }, [players, matches, activeLeague]);
+
+  const finishLeague = async () => {
+    if (finalizing) return;
+    setError("");
+    setReportStatus("");
+    setFinalizing(true);
+    try {
+      const result = await onFinalizeLeague();
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      if (result?.archiveEntry) {
+        downloadCompetitionPdf(result.archiveEntry);
+        setReportStatus("Torneio terminado. O PDF foi gerado e tambem fica disponivel no historico.");
+      }
+    } catch {
+      setError("Nao foi possivel terminar o torneio. Tente novamente.");
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
+  const handleSharePdf = async (item) => {
+    setError("");
+    setReportStatus("");
+    try {
+      const result = await shareCompetitionPdf(item);
+      setReportStatus(result === "shared" ? "PDF partilhado." : "PDF descarregado.");
+    } catch (shareError) {
+      if (shareError?.name !== "AbortError") {
+        setError("Nao foi possivel partilhar o PDF. Use o botao Descarregar PDF.");
+      }
+    }
+  };
+
+  const handleDownloadPdf = (item) => {
+    setError("");
+    setReportStatus("");
+    try {
+      downloadCompetitionPdf(item);
+      setReportStatus("PDF descarregado.");
+    } catch {
+      setError("Nao foi possivel gerar o PDF desta competicao.");
+    }
+  };
 
   const sharePoster = async (item) => {
     if (!item?.posterDataUrl) return;
@@ -4253,9 +4636,15 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
             <p className="text-xs md-text-muted">Premio: {activeLeague.prize || "A definir"}</p>
             <p className="text-xs md-text-muted">Iniciada em {new Date(activeLeague.startedAt).toLocaleString("pt-BR")}</p>
             {completion.done && <p className="text-xs md-text-amber">Condição de fim atingida: {completion.reason}</p>}
-            <button onClick={onFinalizeLeague} className="md-btn-amber w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2">
-              <Crown size={13} /> FINALIZAR E GERAR CAMPEAO
+            <button
+              type="button"
+              onClick={finishLeague}
+              disabled={finalizing}
+              className="md-btn-amber w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              <FileText size={14} /> {finalizing ? "A GERAR RELATORIO..." : "TERMINAR TORNEIO E GERAR PDF"}
             </button>
+            {reportStatus && <p className="text-xs md-text-amber">{reportStatus}</p>}
 
             <div className="rounded-lg border border-white/10 bg-black/20 p-3 mt-2">
               <p className="text-xs md-text-muted font-oswald mb-2">PROBABILIDADE DE TITULO</p>
@@ -4306,13 +4695,31 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
                 <p className="text-xs md-text-muted mt-1">Premio: {item.prize || "Nao informado"}</p>
               </div>
 
-              {item.posterDataUrl && (
-                <img src={item.posterDataUrl} alt={`Poster ${item.name}`} className="w-full rounded-lg border border-white/10" />
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSharePdf(item)}
+                  className="md-btn-amber w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2"
+                >
+                  <Share2 size={13} /> PARTILHAR PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadPdf(item)}
+                  className="md-step-btn w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2"
+                >
+                  <Download size={13} /> DESCARREGAR PDF
+                </button>
+              </div>
 
-              <button onClick={() => sharePoster(item)} className="md-step-btn w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2">
-                <Share2 size={12} /> PARTILHAR IMAGEM DO CAMPEAO
-              </button>
+              {item.posterDataUrl && (
+                <>
+                  <img src={item.posterDataUrl} alt={`Poster ${item.name}`} className="w-full rounded-lg border border-white/10" />
+                  <button onClick={() => sharePoster(item)} className="md-step-btn w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2">
+                    <Share2 size={12} /> PARTILHAR IMAGEM DO CAMPEAO
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
