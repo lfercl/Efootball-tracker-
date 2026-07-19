@@ -2389,7 +2389,7 @@ export default function App() {
       <GlobalStyle />
 
       {phase === "loading" && (
-        <div className="min-h-screen md-bg-stadium flex items-center justify-center">
+        <div className="min-h-screen md-bg-stadium md-efootball-ui flex items-center justify-center">
           <div className="font-oswald md-text-amber md-tracking-lg text-sm md-anim-pulse">CARREGANDO…</div>
         </div>
       )}
@@ -2406,7 +2406,8 @@ export default function App() {
 
       {phase === "app" && (
         <div
-          className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost md-app-shell"
+          className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost md-app-shell md-efootball-ui"
+          data-visual-system="efootball-inspired"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -2631,15 +2632,16 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAd
   };
 
   return (
-    <div className="md-join-shell min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost flex items-center justify-center px-4">
+    <div className="md-join-shell md-efootball-ui min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost flex items-center justify-center px-4"
+      data-visual-system="efootball-inspired">
       <GlobalStyle />
       <div className="md-join-card w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full md-bg-amber-10 md-border md-border-amber-30 mb-3 md-anim-trophy-rise-drop">
             <Trophy size={26} className="md-text-amber" />
           </div>
-          <h1 className="font-oswald text-3xl md-tracking-sm md-text-bone md-anim-logo-blink">MATCHDAY LEDGER</h1>
-          <p className="md-text-muted text-sm mt-1 md-anim-logo-blink">Placar do grupo de eFootball</p>
+          <h1 className="font-oswald text-3xl md-tracking-sm md-text-bone md-anim-logo-blink">EFOOTBALL RIVALS</h1>
+          <p className="md-text-muted text-sm mt-1 md-anim-logo-blink">A tua central competitiva de eFootball</p>
         </div>
 
         <div className="flex md-bg-panel rounded-lg p-1 mb-5 md-border md-border-line">
