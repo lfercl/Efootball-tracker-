@@ -2556,6 +2556,69 @@ export default function App() {
     }
   };
 
+  const restoreLeague = async (archiveId) => {
+    const history = Array.isArray(groupData?.leagueHistory) ? groupData.leagueHistory : [];
+    if (groupData?.activeLeague) {
+      return { error: "Termine a competicao ativa antes de restaurar outra." };
+    }
+
+    const archivedLeague = history.find((item) => item?.id === archiveId);
+    if (!archivedLeague) {
+      return { error: "Nao foi possivel encontrar esta competicao no historico." };
+    }
+
+    const allMatches = Array.isArray(groupData?.matches) ? groupData.matches : [];
+    const archivedMatchIds = new Set(
+      (Array.isArray(archivedLeague.matches) ? archivedLeague.matches : [])
+        .map((match) => match?.id)
+        .filter(Boolean),
+    );
+    const archivedMatchIndexes = allMatches
+      .map((match, index) => (archivedMatchIds.has(match?.id) ? index : -1))
+      .filter((index) => index >= 0);
+    const fallbackStartIndex = Math.max(
+      0,
+      allMatches.length - Math.max(0, Number(archivedLeague.matchesCount || 0)),
+    );
+    const startMatchCount = archivedMatchIndexes.length
+      ? Math.min(...archivedMatchIndexes)
+      : fallbackStartIndex;
+
+    const restoredLeague = {
+      id: archivedLeague.id,
+      name: archivedLeague.name || "Competicao restaurada",
+      mode: archivedLeague.mode === "time" ? "time" : "games",
+      prize: archivedLeague.prize || "",
+      targetMatches: Math.max(
+        1,
+        Number(archivedLeague.targetMatches || archivedLeague.matchesCount || 1),
+      ),
+      targetDateTs: Number(archivedLeague.targetDateTs || 0),
+      startedAt: Number(archivedLeague.startedAt || Date.now()),
+      startMatchCount,
+      createdBy: archivedLeague.createdBy || myName || "Sistema",
+    };
+
+    try {
+      const ok = await saveGroup({
+        ...groupData,
+        activeLeague: restoredLeague,
+        leagueHistory: history.filter((item) => item?.id !== archiveId),
+      });
+      if (!ok) {
+        return { error: "Nao foi possivel restaurar a competicao agora." };
+      }
+      pushToast({
+        title: "Competicao restaurada",
+        body: `${restoredLeague.name} voltou a ficar ativa com os resultados preservados.`,
+      });
+      return { ok: true, restoredLeague };
+    } catch (error) {
+      console.error("Falha ao restaurar competicao", error);
+      return { error: "Nao foi possivel restaurar a competicao agora." };
+    }
+  };
+
   useEffect(() => {
     const hasGroup = Boolean(groupData);
     if (!hasGroup) return;
@@ -2890,6 +2953,7 @@ export default function App() {
                 matches={groupData?.matches || []}
                 onCreateLeague={handleCreateLeague}
                 onFinalizeLeague={finalizeLeague}
+                onRestoreLeague={restoreLeague}
               />
             )}
             {tab === "standings" && (
@@ -4446,7 +4510,15 @@ function StatCard({ icon, label, value, sub, cls }) {
   );
 }
 
-function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreateLeague, onFinalizeLeague }) {
+function LeagueManager({
+  players,
+  activeLeague,
+  leagueHistory,
+  matches,
+  onCreateLeague,
+  onFinalizeLeague,
+  onRestoreLeague,
+}) {
   const [name, setName] = useState("");
   const [prize, setPrize] = useState("");
   const [mode, setMode] = useState("games");
@@ -4454,6 +4526,7 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
   const [targetDate, setTargetDate] = useState("");
   const [error, setError] = useState("");
   const [finalizing, setFinalizing] = useState(false);
+  const [restoringId, setRestoringId] = useState("");
   const [reportStatus, setReportStatus] = useState("");
 
   const submitLeague = async () => {
@@ -4538,6 +4611,25 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
       setReportStatus("PDF descarregado.");
     } catch {
       setError("Nao foi possivel gerar o PDF desta competicao.");
+    }
+  };
+
+  const handleRestoreLeague = async (item) => {
+    if (restoringId || activeLeague) return;
+    setError("");
+    setReportStatus("");
+    setRestoringId(item.id);
+    try {
+      const result = await onRestoreLeague(item.id);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setReportStatus("Torneio restaurado com todos os resultados preservados.");
+    } catch {
+      setError("Nao foi possivel restaurar esta competicao.");
+    } finally {
+      setRestoringId("");
     }
   };
 
@@ -4711,6 +4803,17 @@ function LeagueManager({ players, activeLeague, leagueHistory, matches, onCreate
                   <Download size={13} /> DESCARREGAR PDF
                 </button>
               </div>
+
+              {!activeLeague && (
+                <button
+                  type="button"
+                  onClick={() => handleRestoreLeague(item)}
+                  disabled={Boolean(restoringId)}
+                  className="md-step-btn w-full py-2 rounded-lg text-xs font-oswald flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {restoringId === item.id ? "A RESTAURAR..." : "RESTAURAR TORNEIO"}
+                </button>
+              )}
 
               {item.posterDataUrl && (
                 <>
