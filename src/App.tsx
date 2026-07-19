@@ -13,7 +13,7 @@ interface ImportMetaEnv {
 }
 
 // Color settings panel (placed at module end so it can use helpers)
-function ColorSettings({ open, onClose, initialSection = "visual", myName = "", myEmblemId = "", onSaveMyEmblem }) {
+function ColorSettings({ open, onClose, initialSection = "visual", myName = "", myEmblemId = "", onSaveMyEmblem, onNotify }) {
   const [vals, setVals] = useState({
     "md-bg-stadium": "#071A14",
     "md-bg-panel": "#0F3D2A",
@@ -132,6 +132,10 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
     await storageSet("theme-colors", JSON.stringify(nextVals), false);
     applyTheme(nextVals);
     onClose();
+    onNotify?.({
+      title: "Tema atualizado",
+      body: "As novas cores foram aplicadas à interface.",
+    });
   };
 
   const saveEmblemAndClose = async (emblemId) => {
@@ -165,6 +169,10 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
     setVals(def);
     applyTheme(def);
     storageSet("theme-colors", JSON.stringify(def), false);
+    onNotify?.({
+      title: "Tema reposto",
+      body: "As cores padrão foram restauradas.",
+    });
   };
 
   if (!open) return null;
@@ -282,6 +290,7 @@ import {
   ImagePlus,
   Crown,
   ArrowUp,
+  MoreHorizontal,
 } from "lucide-react";
 
 /* ============================================================
@@ -1488,6 +1497,103 @@ function ResultPulse({ result, winner, loser, fireworks }) {
   );
 }
 
+/* ---------------- Group overview ---------------- */
+
+function OverviewDashboard({ players, matches, schedules, myName }) {
+  const stats = sortStandings(computeStats(players || [], matches || []));
+  const leader = stats[0] || null;
+  const bestAttack = [...stats].sort((a, b) => b.gf - a.gf || b.points - a.points)[0] || null;
+  const lastMatch = (matches || []).length ? matches[matches.length - 1] : null;
+  const nextSchedule = [...(schedules || [])]
+    .filter((item) => Number(item?.whenTs || 0) > Date.now())
+    .sort((a, b) => Number(a.whenTs) - Number(b.whenTs))[0] || null;
+  const recentMatches = [...(matches || [])]
+    .filter((match) => match.playerA === myName || match.playerB === myName)
+    .slice(-5)
+    .reverse();
+  const form = recentMatches.map((match) => {
+    if (Number(match.scoreA) === Number(match.scoreB)) return "E";
+    const won =
+      (match.playerA === myName && Number(match.scoreA) > Number(match.scoreB)) ||
+      (match.playerB === myName && Number(match.scoreB) > Number(match.scoreA));
+    return won ? "V" : "D";
+  });
+
+  return (
+    <section className="md-overview md-bg-panel md-border md-border-line rounded-xl p-4" aria-label="Resumo do grupo">
+      <div className="md-overview-heading">
+        <div>
+          <p className="md-overview-kicker">VISÃO GERAL</p>
+          <h3 className="font-oswald text-sm tracking-wide md-text-bone">RESUMO DO GRUPO</h3>
+        </div>
+        <span className="md-overview-live"><span /> AO VIVO</span>
+      </div>
+
+      <div className="md-overview-grid">
+        <article className="md-overview-tile">
+          <span className="md-overview-icon md-text-amber"><Trophy size={18} /></span>
+          <p className="md-overview-label">Líder</p>
+          {leader ? (
+            <NameWithEmblem
+              name={leader.name}
+              emblemId={getEmblemIdByName(players || [], leader.name)}
+              size={36}
+              textClassName="md-overview-value md-text-bone"
+            />
+          ) : <p className="md-overview-value md-text-bone">Sem dados</p>}
+          <p className="md-overview-sub">{leader ? `${leader.points} pontos` : "Registe uma partida"}</p>
+        </article>
+
+        <article className="md-overview-tile">
+          <span className="md-overview-icon md-text-crimson"><Flame size={18} /></span>
+          <p className="md-overview-label">Melhor ataque</p>
+          {bestAttack ? (
+            <NameWithEmblem
+              name={bestAttack.name}
+              emblemId={getEmblemIdByName(players || [], bestAttack.name)}
+              size={36}
+              textClassName="md-overview-value md-text-bone"
+            />
+          ) : <p className="md-overview-value md-text-bone">Sem dados</p>}
+          <p className="md-overview-sub">{bestAttack ? `${bestAttack.gf} golos marcados` : "Ainda sem golos"}</p>
+        </article>
+
+        <article className="md-overview-tile">
+          <span className="md-overview-icon md-text-amber"><Clock3 size={18} /></span>
+          <p className="md-overview-label">Último resultado</p>
+          <p className="md-overview-value md-text-bone">
+            {lastMatch ? `${lastMatch.playerA} ${lastMatch.scoreA}–${lastMatch.scoreB} ${lastMatch.playerB}` : "Sem resultados"}
+          </p>
+          <p className="md-overview-sub">
+            {lastMatch ? new Date(lastMatch.ts).toLocaleDateString("pt-PT") : "A competição começa aqui"}
+          </p>
+        </article>
+
+        <article className="md-overview-tile">
+          <span className="md-overview-icon md-text-amber"><CalendarDays size={18} /></span>
+          <p className="md-overview-label">Próximo jogo</p>
+          <p className="md-overview-value md-text-bone">{nextSchedule?.title || "Nada agendado"}</p>
+          <p className="md-overview-sub">
+            {nextSchedule ? new Date(nextSchedule.whenTs).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" }) : "Use a Agenda para marcar"}
+          </p>
+        </article>
+      </div>
+
+      <div className="md-form-strip">
+        <div className="md-form-copy">
+          <TrendingUp size={18} className="md-text-amber" />
+          <span><strong>Forma recente</strong><small>{myName || "Jogador atual"}</small></span>
+        </div>
+        <div className="md-form-results" aria-label="Últimos cinco resultados">
+          {form.length ? form.map((result, index) => (
+            <span key={`${result}-${index}`} className={`md-form-result md-form-${result.toLowerCase()}`}>{result}</span>
+          )) : <span className="md-overview-sub">Sem partidas</span>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ---------------- Root App ---------------- */
 
 export default function App() {
@@ -1800,7 +1906,12 @@ export default function App() {
       ...groupData,
       players: [...(groupData?.players || []), { id: genId(), name: trimmed, emblemId: "" }],
     };
-    await saveGroup(data);
+    const ok = await saveGroup(data);
+    if (!ok) return { error: "Não foi possível adicionar o jogador agora." };
+    pushToast({
+      title: "Jogador adicionado",
+      body: `${trimmed} já faz parte do grupo.`,
+    });
     return { ok: true };
   };
 
@@ -1812,7 +1923,13 @@ export default function App() {
       if (!isCurrentById && !isCurrentByName) return player;
       return { ...player, emblemId };
     });
-    await saveGroup({ ...groupData, players: nextPlayers });
+    const ok = await saveGroup({ ...groupData, players: nextPlayers });
+    if (ok) {
+      pushToast({
+        title: "Emblema atualizado",
+        body: emblemId ? "O novo emblema já está visível." : "O emblema foi removido.",
+      });
+    }
   };
 
   const handleSaveMusicSettings = async ({ playlistId }) => {
@@ -1886,7 +2003,11 @@ export default function App() {
       matches: nextMatches,
     };
 
-    await saveGroup(data);
+    const ok = await saveGroup(data);
+    if (ok) pushToast({
+      title: "Jogador removido",
+      body: `${trimmed} foi removido do grupo.`,
+    });
   };
 
   const handleDeleteMatch = async (matchId) => {
@@ -1898,7 +2019,11 @@ export default function App() {
       ...groupData,
       matches: nextMatches,
     };
-    await saveGroup(data);
+    const ok = await saveGroup(data);
+    if (ok) pushToast({
+      title: "Resultado apagado",
+      body: "A classificação foi atualizada.",
+    });
   };
 
   const handleSendMessage = async ({ text = "", mediaDataUrl = "", type = "text" }) => {
@@ -1949,7 +2074,12 @@ export default function App() {
       createdBy: myName,
     };
 
-    await saveGroup({ ...groupData, activeLeague: league });
+    const ok = await saveGroup({ ...groupData, activeLeague: league });
+    if (!ok) return { error: "Não foi possível criar a competição agora." };
+    pushToast({
+      title: "Competição criada",
+      body: `${league.name} já está ativa.`,
+    });
     return { ok: true };
   };
 
@@ -2095,7 +2225,11 @@ export default function App() {
       ...groupData,
       matches: nextMatches,
     };
-    await saveGroup(data);
+    const ok = await saveGroup(data);
+    if (ok) pushToast({
+      title: "Resultado atualizado",
+      body: "As estatísticas já foram recalculadas.",
+    });
   };
 
   const handleLeaveGroup = async () => {
@@ -2196,12 +2330,20 @@ export default function App() {
 
   const handleAddSchedule = async (payload) => {
     const entry = { id: genId(), ...payload };
-    await saveGroup({ ...groupData, schedules: [...(groupData?.schedules || []), entry] });
+    const ok = await saveGroup({ ...groupData, schedules: [...(groupData?.schedules || []), entry] });
+    if (ok) pushToast({
+      title: "Partida agendada",
+      body: entry.title || "O novo compromisso foi guardado.",
+    });
   };
 
   const handleDeleteSchedule = async (id) => {
     const next = (groupData?.schedules || []).filter((s) => s.id !== id);
-    await saveGroup({ ...groupData, schedules: next });
+    const ok = await saveGroup({ ...groupData, schedules: next });
+    if (ok) pushToast({
+      title: "Agendamento removido",
+      body: "A agenda do grupo foi atualizada.",
+    });
   };
 
   const handleVoteMvp = async (matchId, playerName) => {
@@ -2288,6 +2430,12 @@ export default function App() {
           <main className="max-w-2xl mx-auto px-4 pb-24 pt-5 md-mobile-pad-bottom md-main-content">
             {tab === "log" && (
               <div className="space-y-6">
+                <OverviewDashboard
+                  players={groupData?.players || []}
+                  matches={groupData?.matches || []}
+                  schedules={groupData?.schedules || []}
+                  myName={myName}
+                />
                 <LogMatch
                   players={groupData?.players || []}
                   matches={groupData?.matches || []}
@@ -2316,6 +2464,10 @@ export default function App() {
                     if (!ok) {
                       return { error: "Nao foi possivel salvar a partida com foto. Tente novamente com uma imagem menor." };
                     }
+                    pushToast({
+                      title: "Resultado registado",
+                      body: `${playerA} ${scoreA}–${scoreB} ${playerB}`,
+                    });
                     return { ok: true };
                   }}
                 />
@@ -2381,6 +2533,7 @@ export default function App() {
             myName={myName}
             myEmblemId={myEmblemId}
             onSaveMyEmblem={handleSaveMyEmblem}
+            onNotify={pushToast}
           />
           <button
             onClick={() => {
@@ -2608,6 +2761,7 @@ function Header({
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(groupCode);
@@ -2663,6 +2817,13 @@ function Header({
           </div>
         </div>
         <div className="md-header-actions flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setDetailsOpen((value) => !value)}
+            className="md-header-action md-mobile-group-toggle md-icon-btn p-2 rounded-full"
+            aria-label="Abrir dados do grupo"
+          >
+            <Share2 size={16} className="md-text-muted" />
+          </button>
           <button onClick={onThemeToggle} className="md-header-action md-icon-btn p-2 rounded-full mr-1" aria-label="Abrir temas">
             <Settings size={16} className="md-text-muted" />
           </button>
@@ -2672,11 +2833,32 @@ function Header({
               <span className="absolute top-0.5 right-0.5 w-2 h-2 md-bg-crimson rounded-full" />
             )}
           </button>
-          <button onClick={onLeave} className="md-header-action md-icon-btn p-2 rounded-full" aria-label="Sair do grupo">
+          <button onClick={onLeave} className="md-header-action md-leave-action md-icon-btn p-2 rounded-full" aria-label="Sair do grupo">
             <LogOut size={16} className="md-text-muted" />
           </button>
         </div>
       </div>
+      {detailsOpen && (
+        <div className="md-mobile-group-panel">
+          <div>
+            <span>GRUPO</span>
+            <strong>{groupName || "GRUPO"}</strong>
+          </div>
+          <button type="button" onClick={copy}>
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+            <span>Código</span>
+            <strong>{groupCode}</strong>
+          </button>
+          <button type="button" onClick={copyInvite}>
+            {copiedInvite ? <Check size={15} /> : <Link2 size={15} />}
+            <span>{copiedInvite ? "Link copiado" : "Copiar convite"}</span>
+          </button>
+          <button type="button" onClick={onLeave} className="md-mobile-group-exit">
+            <LogOut size={15} />
+            <span>Sair do grupo</span>
+          </button>
+        </div>
+      )}
     </header>
   );
 }
@@ -2723,37 +2905,76 @@ function ActivityFeed({ matches, players, onClose }) {
 /* ---------------- Tabs ---------------- */
 
 function Tabs({ tab, setTab, unreadChat = 0 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
   const items = [
-    { id: "log", label: "Registrar", icon: <Plus size={15} /> },
+    { id: "log", label: "Registrar", mobileLabel: "Novo", icon: <Plus size={17} /> },
     { id: "agenda", label: "Agenda", icon: <CalendarDays size={15} /> },
     { id: "chat", label: "Chat", icon: <MessageCircle size={15} /> },
-    { id: "results", label: "Resultados", icon: <Trophy size={15} /> },
-    { id: "competition", label: "Competicao", icon: <Crown size={15} /> },
-    { id: "standings", label: "Classificação", icon: <BarChart3 size={15} /> },
+    { id: "results", label: "Resultados", mobileLabel: "Jogos", icon: <Trophy size={15} /> },
+    { id: "competition", label: "Competição", icon: <Crown size={15} /> },
+    { id: "standings", label: "Classificação", mobileLabel: "Tabela", icon: <BarChart3 size={15} /> },
     { id: "h2h", label: "Confronto", icon: <Swords size={15} /> },
   ];
+  const primaryIds = ["log", "agenda", "chat", "results"];
+  const primaryItems = items.filter((item) => primaryIds.includes(item.id));
+  const moreItems = items.filter((item) => !primaryIds.includes(item.id));
+  const selectTab = (id) => {
+    setTab(id);
+    setMoreOpen(false);
+  };
+
   return (
-    <div className="md-nav-shell max-w-2xl mx-auto px-4 pt-4">
-      <div className="md-tabs-row md-bg-panel md-border md-border-line rounded-lg p-1">
-        <div className="md-tabs-inner">
-        {items.map((it) => (
-          <button
-            key={it.id}
-            onClick={() => setTab(it.id)}
-            className={`md-tab md-tab-swipe md-touch-target relative flex items-center justify-center gap-1.5 py-2.5 rounded-md font-oswald text-xs tracking-wide ${tab === it.id ? "active" : ""}`}
-          >
-            {it.icon}
-            {it.label.toUpperCase()}
-            {it.id === "chat" && unreadChat > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] leading-5 font-bold">
-                {unreadChat > 99 ? "99+" : unreadChat}
-              </span>
-            )}
-          </button>
-        ))}
+    <>
+      <div className="md-nav-shell md-desktop-nav max-w-2xl mx-auto px-4 pt-4">
+        <div className="md-tabs-row md-bg-panel md-border md-border-line rounded-lg p-1">
+          <div className="md-tabs-inner">
+            {items.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => selectTab(it.id)}
+                className={`md-tab md-tab-swipe md-touch-target relative flex items-center justify-center gap-1.5 py-2.5 rounded-md font-oswald text-xs tracking-wide ${tab === it.id ? "active" : ""}`}
+              >
+                {it.icon}
+                {it.label.toUpperCase()}
+                {it.id === "chat" && unreadChat > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] leading-5 font-bold">
+                    {unreadChat > 99 ? "99+" : unreadChat}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+
+      <nav className="md-mobile-bottom-nav" aria-label="Navegação principal">
+        {moreOpen && (
+          <div className="md-mobile-more-menu">
+            <p>MAIS OPÇÕES</p>
+            <div>
+              {moreItems.map((item) => (
+                <button key={`more-${item.id}`} type="button" onClick={() => selectTab(item.id)} className={tab === item.id ? "active" : ""}>
+                  {item.icon}<span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="md-mobile-bottom-nav-inner">
+          {primaryItems.map((item) => (
+            <button key={`mobile-${item.id}`} type="button" onClick={() => selectTab(item.id)} className={tab === item.id ? "active" : ""}>
+              {item.icon}
+              <span>{item.mobileLabel || item.label}</span>
+              {item.id === "chat" && unreadChat > 0 && <b>{unreadChat > 99 ? "99+" : unreadChat}</b>}
+            </button>
+          ))}
+          <button type="button" onClick={() => setMoreOpen((value) => !value)} className={moreItems.some((item) => item.id === tab) || moreOpen ? "active" : ""}>
+            <MoreHorizontal size={18} />
+            <span>Mais</span>
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }
 
