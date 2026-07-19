@@ -1718,6 +1718,13 @@ export default function App() {
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY || 0;
+
+      if (window.matchMedia("(max-width: 639px)").matches) {
+        setHeaderHidden(false);
+        lastScrollYRef.current = y;
+        return;
+      }
+
       const last = lastScrollYRef.current;
       if (y > last && y > 90) {
         setHeaderHidden(true);
@@ -2788,7 +2795,10 @@ function Header({
     } catch {}
   };
   return (
-    <header className={`border-b md-border-line md-bg-panel-dark-80 sticky top-0 z-40 transition-transform duration-300 ${hidden ? "-translate-y-full" : "translate-y-0"}`}>
+    <header
+      className={`md-app-header border-b md-border-line md-bg-panel-dark-80 sticky top-0 z-40 transition-transform duration-300 ${hidden ? "-translate-y-full" : "translate-y-0"}`}
+      data-mobile-safe-header="enabled"
+    >
       <div className="md-header-inner max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <div className="md-brand-mark shrink-0 rounded-full border border-amber-200/55 bg-gradient-to-b from-amber-200/20 to-amber-500/10 p-3 shadow-[0_0_24px_rgba(255,182,39,0.45)]">
