@@ -3545,7 +3545,7 @@ function LogMatch({ players, matches, myName, onSubmit }) {
           <p className="md-text-muted text-sm">Adicione pelo menos 2 jogadores para registrar uma partida.</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <PlayerSelect label="Jogador A" value={a} onChange={setA} options={options} />
               <PlayerSelect label="Jogador B" value={b} onChange={setB} options={options} />
             </div>
@@ -3611,20 +3611,26 @@ function LogMatch({ players, matches, myName, onSubmit }) {
 
 function PlayerSelect({ label, value, onChange, options }) {
   return (
-    <div>
-      <label className="text-sm md-text-muted">{label}</label>
+    <div className="md-player-select min-w-0">
+      <label className="block text-sm font-oswald md-text-bone mb-1.5">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="md-input w-full mt-1 rounded-lg px-2 py-2 text-sm"
+        className="md-input md-player-name-select w-full rounded-lg px-4 py-3 font-oswald"
+        aria-label={label}
       >
-        <option value="">Selecionar</option>
+        <option value="">Selecionar jogador</option>
         {options.map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
         ))}
       </select>
+      {value && (
+        <p className="md-player-selection mt-2" title={value}>
+          Selecionado: <span>{value}</span>
+        </p>
+      )}
     </div>
   );
 }

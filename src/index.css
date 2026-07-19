@@ -36,3 +36,12 @@ body { background:var(--md-bg-stadium,#071A14); transition:background .35s ease;
 @keyframes mdThemeContentIn { from{opacity:.55;transform:translateY(5px)} to{opacity:1;transform:none} }
 @media (max-width:639px){.md-main-content{padding-inline:14px}.md-bg-panel{border-radius:16px}}
 @media (prefers-reduced-motion:reduce){body,.md-app-shell,.md-bg-panel,.md-main-content>*{transition:none;animation:none}}
+
+/* Clear, full-width player names in + Registrar, including native mobile menus. */
+.md-player-select { padding:12px; border:1px solid color-mix(in srgb,var(--md-border-line,#2E7A52) 72%,#fff 10%); border-radius:14px; background:color-mix(in srgb,var(--md-bg-panel-dark,#0B2A1E) 70%,transparent); }
+.md-player-name-select { min-height:56px; max-width:100%; color:var(--md-text-bone,#fff) !important; background-color:var(--md-bg-stadium,#071A14) !important; border:2px solid var(--md-border-line,#2E7A52) !important; font-size:1.05rem !important; font-weight:600; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
+.md-player-name-select:focus { border-color:var(--md-text-amber,#FFC85C) !important; box-shadow:0 0 0 4px color-mix(in srgb,var(--md-bg-amber,#FFB627) 24%,transparent) !important; }
+.md-player-name-select option { color:#fff !important; background:var(--md-bg-panel-dark,#0B2A1E) !important; font-size:1rem; font-weight:600; }
+.md-player-selection { min-width:0; overflow:hidden; color:var(--md-text-muted,#CBD8D1); font-size:.78rem; line-height:1.35; text-overflow:ellipsis; white-space:nowrap; }
+.md-player-selection span { color:var(--md-text-amber,#FFC85C); font-weight:700; }
+@media (max-width:639px){.md-player-select{padding:14px}.md-player-name-select{min-height:60px;font-size:1.1rem !important}}
