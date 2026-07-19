@@ -126,6 +126,23 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
     }
   }, [myEmblemId, open, initialSection]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+
   const update = (k, v) => setVals((s) => ({ ...s, [k]: v }));
 
   const persistAndClose = async (nextVals) => {
@@ -177,14 +194,27 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+    <div
+      className="md-settings-layer fixed inset-0 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      onTouchStart={(event) => event.stopPropagation()}
+      onTouchMove={(event) => event.stopPropagation()}
+      onTouchEnd={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="md-settings-backdrop absolute inset-0"
+        onClick={onClose}
+        aria-label="Fechar configurações"
+      />
       <div className="md-settings-modal relative w-full max-w-2xl bg-white/5 rounded-xl p-5 md-border md-border-line max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-oswald text-2xl md-text-bone">Configuracoes</h3>
-          <div className="flex gap-2">
-            <button onClick={reset} className="md-step-btn px-4 py-2 rounded-md text-sm">Reset</button>
-            <button onClick={onClose} className="md-step-btn px-4 py-2 rounded-md text-sm">Fechar</button>
+        <div className="md-settings-header flex items-center justify-between mb-3">
+          <h3 id="settings-title" className="font-oswald text-2xl md-text-bone">Configurações</h3>
+          <div className="md-settings-actions flex gap-2">
+            <button type="button" onClick={reset} className="md-step-btn px-4 py-2 rounded-md text-sm">Reset</button>
+            <button type="button" onClick={onClose} className="md-step-btn px-4 py-2 rounded-md text-sm">Fechar</button>
           </div>
         </div>
 
