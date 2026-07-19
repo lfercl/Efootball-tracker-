@@ -4,5 +4,34 @@ service cloud.firestore {
     match /sharedStorage/{document=**} {
       allow read, write: if true;
     }
+
+    match /pushTokens/{tokenId} {
+      allow read: if false;
+      allow create, update: if
+        request.resource.data.keys().hasOnly([
+          'token',
+          'groupCode',
+          'playerName',
+          'playerId',
+          'origin',
+          'enabled',
+          'updatedAt'
+        ]) &&
+        request.resource.data.token is string &&
+        request.resource.data.token.size() > 20 &&
+        request.resource.data.token.size() < 4096 &&
+        request.resource.data.groupCode is string &&
+        request.resource.data.groupCode.size() > 0 &&
+        request.resource.data.groupCode.size() <= 12 &&
+        request.resource.data.playerName is string &&
+        request.resource.data.playerName.size() <= 80 &&
+        request.resource.data.playerId is string &&
+        request.resource.data.playerId.size() <= 120 &&
+        request.resource.data.origin is string &&
+        request.resource.data.origin.size() <= 300 &&
+        request.resource.data.enabled == true &&
+        request.resource.data.updatedAt is number;
+      allow delete: if true;
+    }
   }
 }

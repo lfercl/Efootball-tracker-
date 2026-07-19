@@ -12,10 +12,23 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
+  readonly VITE_FIREBASE_VAPID_KEY?: string;
 }
 
 // Color settings panel (placed at module end so it can use helpers)
-function ColorSettings({ open, onClose, initialSection = "visual", myName = "", myEmblemId = "", onSaveMyEmblem, onNotify }) {
+function ColorSettings({
+  open,
+  onClose,
+  initialSection = "visual",
+  myName = "",
+  myEmblemId = "",
+  onSaveMyEmblem,
+  onNotify,
+  notificationState = "checking",
+  notificationBusy = false,
+  onEnableNotifications,
+  onDisableNotifications,
+}) {
   const [vals, setVals] = useState({
     "md-bg-stadium": "#071A14",
     "md-bg-panel": "#0F3D2A",
@@ -124,7 +137,7 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
   useEffect(() => {
     setSelectedEmblem(myEmblemId || "");
     if (open) {
-      setActiveSection("visual");
+      setActiveSection(initialSection || "visual");
     }
   }, [myEmblemId, open, initialSection]);
 
@@ -215,12 +228,14 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
         <div className="md-settings-header flex items-center justify-between mb-3">
           <h3 id="settings-title" className="font-oswald text-2xl md-text-bone">Configurações</h3>
           <div className="md-settings-actions flex gap-2">
-            <button type="button" onClick={reset} className="md-step-btn px-4 py-2 rounded-md text-sm">Reset</button>
+            {activeSection === "visual" && (
+              <button type="button" onClick={reset} className="md-step-btn px-4 py-2 rounded-md text-sm">Reset</button>
+            )}
             <button type="button" onClick={onClose} className="md-step-btn px-4 py-2 rounded-md text-sm">Fechar</button>
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-2">
+        <div className="mb-4 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setActiveSection("visual")}
@@ -228,7 +243,78 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
           >
             VISUAL
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection("notifications")}
+            className={`md-step-btn px-4 py-2 rounded-md text-sm ${activeSection === "notifications" ? "md-bg-amber md-text-bone" : ""}`}
+          >
+            NOTIFICAÇÕES
+          </button>
         </div>
+
+        {activeSection === "notifications" && (
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="flex items-start gap-3">
+              <span className="rounded-full md-bg-amber p-3 md-text-bone"><Bell size={22} /></span>
+              <div className="min-w-0 flex-1">
+                <p className="font-oswald text-xl md-text-bone">Notificações no telemóvel</p>
+                <p className="mt-1 text-sm md-text-muted">
+                  Receba avisos de novas mensagens e resultados mesmo quando a app estiver fechada.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+              <p className="text-sm md-text-bone">
+                Estado:{" "}
+                <strong>
+                  {notificationState === "active" && "Ativadas"}
+                  {notificationState === "inactive" && "Desativadas"}
+                  {notificationState === "blocked" && "Bloqueadas no navegador"}
+                  {notificationState === "unsupported" && "Não suportadas neste navegador"}
+                  {notificationState === "error" && "Erro ao configurar"}
+                  {notificationState === "checking" && "A verificar…"}
+                </strong>
+              </p>
+              {notificationState === "blocked" && (
+                <p className="mt-2 text-xs md-text-muted">
+                  Abra as permissões deste site no navegador, permita notificações e volte a tentar.
+                </p>
+              )}
+              {notificationState === "unsupported" && (
+                <p className="mt-2 text-xs md-text-muted">
+                  Use um navegador compatível e, no iPhone, instale primeiro a app no ecrã principal.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {notificationState !== "active" ? (
+                <button
+                  type="button"
+                  onClick={onEnableNotifications}
+                  disabled={notificationBusy || notificationState === "unsupported" || notificationState === "blocked"}
+                  className="md-btn-amber rounded-lg px-5 py-3 font-oswald text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {notificationBusy ? "A ATIVAR…" : "ATIVAR NOTIFICAÇÕES"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onDisableNotifications}
+                  disabled={notificationBusy}
+                  className="md-step-btn rounded-lg px-5 py-3 font-oswald text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {notificationBusy ? "A DESATIVAR…" : "DESATIVAR"}
+                </button>
+              )}
+            </div>
+
+            <p className="mt-3 text-xs md-text-muted">
+              Ao tocar num aviso de resultado abre diretamente Resultados; avisos do chat abrem a conversa.
+            </p>
+          </div>
+        )}
 
         {activeSection === "visual" && (
         <div className="mb-4 rounded-lg border border-white/10 bg-black/15 p-3">
@@ -278,9 +364,11 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
         </div>
         )}
 
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={save} className="md-btn-amber px-6 py-3 rounded-md text-sm">Salvar</button>
-        </div>
+        {activeSection === "visual" && (
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={save} className="md-btn-amber px-6 py-3 rounded-md text-sm">Salvar</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -290,8 +378,9 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
+import { deleteToken, getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import {
   Trophy,
   Swords,
@@ -568,8 +657,6 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID,
 };
 
-console.log("API KEY LIDA:", firebaseConfig.apiKey);
-
 const firebaseReady = Boolean(
   firebaseConfig.apiKey &&
   firebaseConfig.projectId &&
@@ -587,6 +674,34 @@ const db = firebaseApp
 const auth = firebaseApp
   ? getAuth(firebaseApp)
   : null;
+
+const PUSH_ENABLED_KEY = "push-notifications-enabled";
+const PUSH_DOC_KEY = "push-notifications-document";
+const PUSH_GROUP_KEY = "push-notifications-group";
+const PUSH_TABS = new Set(["log", "chat", "results", "competition", "standings", "h2h", "agenda"]);
+
+function getRequestedPushTab() {
+  if (typeof window === "undefined") return "log";
+  const requested = new URLSearchParams(window.location.search).get("tab") || "";
+  return PUSH_TABS.has(requested) ? requested : "log";
+}
+
+function getMessagingServiceWorkerInfo() {
+  const baseUrl = new URL(env.BASE_URL || "./", window.location.href);
+  const workerUrl = new URL("firebase-messaging-sw.js", baseUrl);
+  Object.entries(firebaseConfig).forEach(([key, value]) => {
+    if (value) workerUrl.searchParams.set(key, String(value));
+  });
+  return { workerUrl, scope: baseUrl.pathname };
+}
+
+async function hashPushToken(token) {
+  const encoded = new TextEncoder().encode(token);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 
@@ -1983,8 +2098,10 @@ export default function App() {
   const [myPlayerId, setMyPlayerId] = useState("");
   const [groupCode, setGroupCode] = useState("");
   const [groupData, setGroupData] = useState(null); // { name, players:[{id,name}], matches:[...] }
-  const [tab, setTab] = useState("log");
+  const [tab, setTab] = useState(getRequestedPushTab);
   const [toasts, setToasts] = useState([]);
+  const [notificationState, setNotificationState] = useState("checking");
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const [unread, setUnread] = useState(0);
   const [unreadChat, setUnreadChat] = useState(0);
   const [feedOpen, setFeedOpen] = useState(false);
@@ -2004,6 +2121,7 @@ export default function App() {
   const pollRef = useRef(null);
   const lastScrollYRef = useRef(0);
   const finalizingLeagueRef = useRef(false);
+  const pushSetupRef = useRef(false);
   const isAdmin = authIsAdmin || codeIsAdmin;
 
   useEffect(() => {
@@ -2117,10 +2235,12 @@ export default function App() {
           const newOnes = parsed.matches.slice(lastSeenCount.current);
           newOnes.forEach((m) => {
             if (m.recordedBy !== myName) {
-              pushToast({
-                title: `${m.recordedBy} registrou uma partida`,
-                body: `${m.playerA} ${m.scoreA} x ${m.scoreB} ${m.playerB}`,
-              });
+              if (notificationState !== "active") {
+                pushToast({
+                  title: `${m.recordedBy} registrou uma partida`,
+                  body: `${m.playerA} ${m.scoreA} x ${m.scoreB} ${m.playerB}`,
+                });
+              }
               setUnread((u) => u + 1);
             }
           });
@@ -2142,7 +2262,7 @@ export default function App() {
       } catch {}
     }, 4000);
     return () => clearInterval(pollRef.current);
-  }, [phase, groupCode, myName, tab]);
+  }, [phase, groupCode, myName, tab, notificationState]);
 
   useEffect(() => {
     if (tab !== "chat") return;
@@ -2168,8 +2288,6 @@ export default function App() {
           new Notification("Matchday Ledger", {
             body: `${next.title || "Próximo jogo"} em ${mins} min`,
           });
-        } else if (Notification.permission !== "denied") {
-          Notification.requestPermission();
         }
       }
     }
@@ -2180,6 +2298,226 @@ export default function App() {
     setToasts((cur) => [...cur, { ...t, id }]);
   };
   const closeToast = (id) => setToasts((cur) => cur.filter((t) => t.id !== id));
+
+  const removeStoredPushSubscription = async () => {
+    const storedDocId = window.localStorage.getItem(PUSH_DOC_KEY);
+    if (storedDocId && db) {
+      try {
+        await deleteDoc(doc(db, "pushTokens", storedDocId));
+      } catch (error) {
+        console.warn("Não foi possível remover o registo push remoto.", error);
+      }
+    }
+    window.localStorage.removeItem(PUSH_DOC_KEY);
+    window.localStorage.removeItem(PUSH_GROUP_KEY);
+  };
+
+  const enablePushNotifications = async ({ requestPermission = true, quiet = false } = {}) => {
+    if (notificationBusy || pushSetupRef.current) return false;
+    pushSetupRef.current = true;
+    setNotificationBusy(true);
+    try {
+      const browserSupportsNotifications =
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        "serviceWorker" in navigator &&
+        firebaseApp &&
+        db &&
+        await isSupported();
+
+      if (!browserSupportsNotifications) {
+        setNotificationState("unsupported");
+        if (!quiet) {
+          pushToast({
+            title: "Notificações indisponíveis",
+            body: "Este navegador não suporta notificações push para esta app.",
+          });
+        }
+        return false;
+      }
+
+      let permission = Notification.permission;
+      if (permission === "default" && requestPermission) {
+        permission = await Notification.requestPermission();
+      }
+      if (permission === "denied") {
+        setNotificationState("blocked");
+        window.localStorage.removeItem(PUSH_ENABLED_KEY);
+        if (!quiet) {
+          pushToast({
+            title: "Notificações bloqueadas",
+            body: "Permita notificações nas definições deste site e tente novamente.",
+          });
+        }
+        return false;
+      }
+      if (permission !== "granted") {
+        setNotificationState("inactive");
+        return false;
+      }
+      if (!groupCode || !myName) {
+        setNotificationState("inactive");
+        return false;
+      }
+
+      const { workerUrl, scope } = getMessagingServiceWorkerInfo();
+      const registration = await navigator.serviceWorker.register(workerUrl.href, { scope });
+      await navigator.serviceWorker.ready;
+
+      const messaging = getMessaging(firebaseApp);
+      const tokenOptions: Record<string, any> = { serviceWorkerRegistration: registration };
+      if (env.VITE_FIREBASE_VAPID_KEY) {
+        tokenOptions.vapidKey = env.VITE_FIREBASE_VAPID_KEY;
+      }
+      const token = await getToken(messaging, tokenOptions);
+      if (!token) {
+        throw new Error("O navegador não devolveu um token de notificações.");
+      }
+
+      const tokenDocumentId = await hashPushToken(token);
+      const previousDocumentId = window.localStorage.getItem(PUSH_DOC_KEY);
+      if (previousDocumentId && previousDocumentId !== tokenDocumentId) {
+        try {
+          await deleteDoc(doc(db, "pushTokens", previousDocumentId));
+        } catch {}
+      }
+
+      await setDoc(
+        doc(db, "pushTokens", tokenDocumentId),
+        {
+          token,
+          groupCode,
+          playerName: myName,
+          playerId: myPlayerId || "",
+          origin: window.location.origin,
+          enabled: true,
+          updatedAt: Date.now(),
+        },
+        { merge: true },
+      );
+
+      window.localStorage.setItem(PUSH_ENABLED_KEY, "1");
+      window.localStorage.setItem(PUSH_DOC_KEY, tokenDocumentId);
+      window.localStorage.setItem(PUSH_GROUP_KEY, groupCode);
+      setNotificationState("active");
+      if (!quiet) {
+        pushToast({
+          title: "Notificações ativadas",
+          body: "Vai receber mensagens e resultados mesmo com a app fechada.",
+        });
+      }
+      return true;
+    } catch (error) {
+      console.error("Falha ao ativar notificações push", error);
+      setNotificationState("error");
+      if (!quiet) {
+        pushToast({
+          title: "Não foi possível ativar",
+          body: "Tente novamente. Se continuar, confirme as permissões do navegador.",
+        });
+      }
+      return false;
+    } finally {
+      pushSetupRef.current = false;
+      setNotificationBusy(false);
+    }
+  };
+
+  const disablePushNotifications = async () => {
+    if (notificationBusy || pushSetupRef.current) return;
+    pushSetupRef.current = true;
+    setNotificationBusy(true);
+    try {
+      if (firebaseApp && await isSupported()) {
+        try {
+          await deleteToken(getMessaging(firebaseApp));
+        } catch (error) {
+          console.warn("Não foi possível apagar o token local.", error);
+        }
+      }
+      await removeStoredPushSubscription();
+      window.localStorage.removeItem(PUSH_ENABLED_KEY);
+      setNotificationState("inactive");
+      pushToast({
+        title: "Notificações desativadas",
+        body: "Este telemóvel deixou de receber avisos desta app.",
+      });
+    } finally {
+      pushSetupRef.current = false;
+      setNotificationBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
+      setNotificationState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setNotificationState("blocked");
+      return;
+    }
+    const locallyEnabled = window.localStorage.getItem(PUSH_ENABLED_KEY) === "1";
+    if (!locallyEnabled) {
+      setNotificationState("inactive");
+      return;
+    }
+    if (phase !== "app" || !groupCode || !myName) return;
+
+    const previousGroup = window.localStorage.getItem(PUSH_GROUP_KEY);
+    if (previousGroup && previousGroup !== groupCode) {
+      removeStoredPushSubscription().finally(() => {
+        window.localStorage.removeItem(PUSH_ENABLED_KEY);
+        setNotificationState("inactive");
+      });
+      return;
+    }
+    enablePushNotifications({ requestPermission: false, quiet: true });
+  }, [phase, groupCode, myName, myPlayerId]);
+
+  useEffect(() => {
+    if (!firebaseApp || phase !== "app") return;
+    let unsubscribe = () => {};
+    let cancelled = false;
+
+    isSupported().then((supported) => {
+      if (!supported || cancelled) return;
+      unsubscribe = onMessage(getMessaging(firebaseApp), (payload) => {
+        const data = payload.data || {};
+        const destination = PUSH_TABS.has(data.tab || "") ? data.tab : "results";
+        pushToast({
+          title: data.title || "Nova atividade",
+          body: data.body || "Abra a app para ver as novidades.",
+        });
+        if (destination === "results") setUnread((value) => value + 1);
+        if (destination === "chat" && tab !== "chat") setUnreadChat((value) => value + 1);
+      });
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [phase, tab]);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handleWorkerMessage = (event) => {
+      if (event.data?.type !== "OPEN_APP_TAB") return;
+      const destination = event.data?.tab;
+      if (PUSH_TABS.has(destination)) setTab(destination);
+    };
+    navigator.serviceWorker.addEventListener("message", handleWorkerMessage);
+
+    const requestedTab = getRequestedPushTab();
+    if (requestedTab !== "log") {
+      setTab(requestedTab);
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("tab");
+      window.history.replaceState({}, "", cleanUrl.href);
+    }
+    return () => navigator.serviceWorker.removeEventListener("message", handleWorkerMessage);
+  }, []);
 
   const saveGroup = async (data) => {
     setGroupData(data);
@@ -2431,7 +2769,8 @@ export default function App() {
       messages: [...(groupData?.messages || []), entry],
     };
 
-    await saveGroup(data);
+    const ok = await saveGroup(data);
+    if (!ok) return { error: "Não foi possível enviar a mensagem agora." };
     return { ok: true };
   };
 
@@ -2679,6 +3018,9 @@ export default function App() {
   };
 
   const handleLeaveGroup = async () => {
+    await removeStoredPushSubscription();
+    window.localStorage.removeItem(PUSH_ENABLED_KEY);
+    setNotificationState("inactive");
     try {
       if (auth) {
         await signOut(auth);
@@ -2982,6 +3324,10 @@ export default function App() {
             myEmblemId={myEmblemId}
             onSaveMyEmblem={handleSaveMyEmblem}
             onNotify={pushToast}
+            notificationState={notificationState}
+            notificationBusy={notificationBusy}
+            onEnableNotifications={() => enablePushNotifications({ requestPermission: true, quiet: false })}
+            onDisableNotifications={disablePushNotifications}
           />
           <button
             onClick={() => {
@@ -2989,9 +3335,9 @@ export default function App() {
               setThemeOpen(true);
             }}
             className="md-theme-fab fixed right-5 md-safe-float z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)] md-touch-target"
-            aria-label="Abrir temas"
+            aria-label="Abrir configurações"
           >
-            <span className="md-theme-fab-content inline-flex items-center gap-2"><Settings size={18} /> <span className="md-theme-fab-label">Temas</span></span>
+            <span className="md-theme-fab-content inline-flex items-center gap-2"><Settings size={18} /> <span className="md-theme-fab-label">Configurações</span></span>
           </button>
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
             {toasts.map((t) => (
