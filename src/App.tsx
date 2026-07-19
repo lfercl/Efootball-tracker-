@@ -1089,9 +1089,11 @@ function EmblemBadge({ emblemId, size = 32 }) {
 
 function NameWithEmblem({ name, emblemId, size = 32, textClassName = "", className = "" }) {
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
+    <span className={`md-name-group inline-flex min-w-0 items-center gap-2 ${className}`}>
       <EmblemBadge emblemId={emblemId} size={size} />
-      <span className={textClassName}>{name}</span>
+      <span className={`md-name-animated ${textClassName}`} data-name-animation="enabled">
+        {name}
+      </span>
     </span>
   );
 }
