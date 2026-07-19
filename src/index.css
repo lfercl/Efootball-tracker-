@@ -14,3 +14,25 @@ button, input { font: inherit; }
 .md-emblem-3d__shine { position:absolute; z-index:2; top:7%; left:17%; width:60%; height:34%; pointer-events:none; border-radius:50%; background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(255,255,255,0)); transform:rotate(-10deg); mix-blend-mode:screen; }
 .md-emblem-3d:hover { transform:translateY(-1px) perspective(240px) rotateX(1deg) scale(1.04); filter:saturate(1.1) brightness(1.05); }
 @media (prefers-reduced-motion:reduce){.md-emblem-3d{transition:none}}
+
+/* Club-driven premium visual system. The variables are set from the chosen emblem. */
+body { background:var(--md-bg-stadium,#071A14); transition:background .35s ease; }
+.md-app-shell { position:relative; isolation:isolate; overflow-x:hidden; background:
+  radial-gradient(circle at 12% -4%,color-mix(in srgb,var(--md-bg-amber,#FFB627) 18%,transparent),transparent 34rem),
+  radial-gradient(circle at 96% 22%,color-mix(in srgb,var(--md-bg-crimson,#E4572E) 14%,transparent),transparent 28rem),
+  linear-gradient(160deg,color-mix(in srgb,var(--md-bg-stadium,#071A14) 92%,#000),var(--md-bg-stadium,#071A14));
+  transition:background .35s ease,color .35s ease;
+}
+.md-app-shell::before { content:""; position:fixed; z-index:-1; inset:0; pointer-events:none; opacity:.2; background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:38px 38px; mask-image:linear-gradient(to bottom,#000,transparent 72%); }
+.md-main-content { position:relative; }
+.md-main-content > * { animation:mdThemeContentIn .38s cubic-bezier(.2,.8,.2,1); }
+.md-bg-panel { background:linear-gradient(145deg,color-mix(in srgb,var(--md-bg-panel,#0F3D2A) 94%,#fff 6%),var(--md-bg-panel,#0F3D2A)) !important; border-color:color-mix(in srgb,var(--md-border-line,#2E7A52) 78%,#fff 12%) !important; box-shadow:0 14px 35px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.07); transition:background .35s ease,border-color .35s ease,box-shadow .2s ease,transform .2s ease; }
+.md-bg-panel:hover { box-shadow:0 18px 42px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.1); }
+.md-tabs-row { background:color-mix(in srgb,var(--md-bg-panel-dark,#0B2A1E) 88%,transparent); border-block:1px solid color-mix(in srgb,var(--md-border-line,#2E7A52) 70%,transparent); box-shadow:0 8px 24px rgba(0,0,0,.18); backdrop-filter:blur(16px); }
+.md-tab { border-radius:12px; }
+.md-tab.active { box-shadow:0 8px 22px color-mix(in srgb,var(--md-bg-amber,#FFB627) 28%,transparent),inset 0 1px rgba(255,255,255,.35); }
+.md-btn-amber { box-shadow:0 9px 22px color-mix(in srgb,var(--md-bg-amber,#FFB627) 25%,transparent),inset 0 1px rgba(255,255,255,.36); }
+.md-input { border-radius:12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.04); transition:border-color .2s ease,box-shadow .2s ease,background .35s ease; }
+@keyframes mdThemeContentIn { from{opacity:.55;transform:translateY(5px)} to{opacity:1;transform:none} }
+@media (max-width:639px){.md-main-content{padding-inline:14px}.md-bg-panel{border-radius:16px}}
+@media (prefers-reduced-motion:reduce){body,.md-app-shell,.md-bg-panel,.md-main-content>*{transition:none;animation:none}}
