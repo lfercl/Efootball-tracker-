@@ -486,12 +486,22 @@ function applyTheme(vars) {
       .md-bg-stadium{ background: var(--md-bg-stadium, #071A14) !important; }
       .md-bg-panel{ background: var(--md-bg-panel, #0F3D2A) !important; }
       .md-bg-panel-dark{ background: var(--md-bg-panel-dark, #0B2A1E) !important; }
+      .md-bg-panel-dark-40{ background: color-mix(in srgb, var(--md-bg-panel-dark, #0B2A1E) 62%, transparent) !important; }
+      .md-bg-panel-dark-80{ background: color-mix(in srgb, var(--md-bg-panel-dark, #0B2A1E) 88%, transparent) !important; }
+      .md-bg-line, .md-step-btn, .md-step-btn-danger{ background: var(--md-bg-line, #1C5C3D) !important; }
       .md-bg-amber{ background: var(--md-bg-amber, #FFB627) !important; }
       .md-bg-crimson{ background: var(--md-bg-crimson, #E4572E) !important; }
       .md-text-bone{ color: var(--md-text-bone, #FFFFFF) !important; }
+      .md-text-muted{ color: var(--md-text-muted, #CBD8D1) !important; }
+      .md-text-muted-dim{ color: var(--md-text-muted-dim, #9FC2AE) !important; }
       .md-text-amber{ color: var(--md-text-amber, #FFC85C) !important; }
       .md-text-crimson{ color: var(--md-text-crimson, #FF7A57) !important; }
       .md-border-line{ border-color: var(--md-border-line, #2E7A52) !important; }
+      .md-input{ background: var(--md-bg-stadium, #071A14) !important; color: var(--md-text-bone, #FFFFFF) !important; border-color: var(--md-border-line, #2E7A52) !important; }
+      .md-input:focus{ border-color: var(--md-text-amber, #FFC85C) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-bg-amber, #FFB627) 22%, transparent); }
+      .md-btn-amber, .md-tab.active{ background: var(--md-bg-amber, #FFB627) !important; color: var(--md-bg-stadium, #071A14) !important; }
+      .md-step-btn:hover{ background: var(--md-bg-amber, #FFB627) !important; color: var(--md-bg-stadium, #071A14) !important; }
+      body{ background: var(--md-bg-stadium, #071A14); }
     `;
     if (!el) {
       el = document.createElement("style");
@@ -598,6 +608,31 @@ const EMBLEM_OPTIONS = [
   { id: "mocambique", label: "Mocambique", url: "https://upload.wikimedia.org/wikipedia/commons/d/d0/Flag_of_Mozambique.svg" },
   { id: "cabo-verde", label: "Cabo Verde", url: "https://flagcdn.com/w80/cv.png" },
 ];
+
+const CLUB_THEMES: Record<string, Record<string, string>> = {
+  default: { "md-bg-stadium": "#071A14", "md-bg-panel": "#0F3D2A", "md-bg-panel-dark": "#0B2A1E", "md-bg-line": "#1C5C3D", "md-bg-amber": "#FFB627", "md-bg-crimson": "#E4572E", "md-text-bone": "#FFFFFF", "md-text-muted": "#CBD8D1", "md-text-muted-dim": "#9FC2AE", "md-text-amber": "#FFC85C", "md-text-crimson": "#FF7A57", "md-border-line": "#2E7A52" },
+  "vitoria-guimaraes": { "md-bg-stadium": "#08090B", "md-bg-panel": "#17191D", "md-bg-panel-dark": "#101216", "md-bg-line": "#30343A", "md-bg-amber": "#D8B34B", "md-bg-crimson": "#B62F35", "md-text-bone": "#FFFFFF", "md-text-muted": "#D4D6D9", "md-text-muted-dim": "#9CA1A8", "md-text-amber": "#F1D477", "md-text-crimson": "#FF7A82", "md-border-line": "#4A4F57" },
+  "sporting-cp": { "md-bg-stadium": "#031D14", "md-bg-panel": "#063D29", "md-bg-panel-dark": "#052A1E", "md-bg-line": "#0D6A45", "md-bg-amber": "#8FD400", "md-bg-crimson": "#E53B3B", "md-text-bone": "#FFFFFF", "md-text-muted": "#CAE5D8", "md-text-muted-dim": "#8EBEAA", "md-text-amber": "#B8F34C", "md-text-crimson": "#FF8585", "md-border-line": "#148A5A" },
+  benfica: { "md-bg-stadium": "#200307", "md-bg-panel": "#4A0810", "md-bg-panel-dark": "#31060B", "md-bg-line": "#7F101C", "md-bg-amber": "#D9AD3C", "md-bg-crimson": "#E0002A", "md-text-bone": "#FFFFFF", "md-text-muted": "#F0CED2", "md-text-muted-dim": "#CC9299", "md-text-amber": "#F4D36F", "md-text-crimson": "#FF7891", "md-border-line": "#9E2430" },
+  barcelona: { "md-bg-stadium": "#071437", "md-bg-panel": "#17285A", "md-bg-panel-dark": "#0C1B44", "md-bg-line": "#6A1839", "md-bg-amber": "#EDBB00", "md-bg-crimson": "#A50044", "md-text-bone": "#FFFFFF", "md-text-muted": "#D2DBF2", "md-text-muted-dim": "#93A4D0", "md-text-amber": "#FFD447", "md-text-crimson": "#F65C91", "md-border-line": "#344C8A" },
+  "real-madrid": { "md-bg-stadium": "#07122C", "md-bg-panel": "#14254A", "md-bg-panel-dark": "#0C1936", "md-bg-line": "#294C8F", "md-bg-amber": "#D6B85C", "md-bg-crimson": "#7047EB", "md-text-bone": "#FFFFFF", "md-text-muted": "#DCE5F7", "md-text-muted-dim": "#9BAED3", "md-text-amber": "#F4D77D", "md-text-crimson": "#B59AFF", "md-border-line": "#4264A2" },
+  arsenal: { "md-bg-stadium": "#190307", "md-bg-panel": "#470B15", "md-bg-panel-dark": "#2C0710", "md-bg-line": "#82142A", "md-bg-amber": "#D9B75E", "md-bg-crimson": "#EF2447", "md-text-bone": "#FFFFFF", "md-text-muted": "#F0D4D9", "md-text-muted-dim": "#C3939C", "md-text-amber": "#F5D98A", "md-text-crimson": "#FF8096", "md-border-line": "#9E2940" },
+  "manchester-city": { "md-bg-stadium": "#061A2A", "md-bg-panel": "#123B56", "md-bg-panel-dark": "#0A283C", "md-bg-line": "#397EA5", "md-bg-amber": "#79C9EC", "md-bg-crimson": "#E63950", "md-text-bone": "#FFFFFF", "md-text-muted": "#D2EBF5", "md-text-muted-dim": "#8DBDD2", "md-text-amber": "#A6E2FA", "md-text-crimson": "#FF8292", "md-border-line": "#4F94B9" },
+  "manchester-united": { "md-bg-stadium": "#180305", "md-bg-panel": "#43090C", "md-bg-panel-dark": "#2A0508", "md-bg-line": "#7B1118", "md-bg-amber": "#F5C542", "md-bg-crimson": "#DA101A", "md-text-bone": "#FFFFFF", "md-text-muted": "#EED1D3", "md-text-muted-dim": "#C28D91", "md-text-amber": "#FFE078", "md-text-crimson": "#FF737A", "md-border-line": "#9A242B" },
+  psg: { "md-bg-stadium": "#020D2C", "md-bg-panel": "#102552", "md-bg-panel-dark": "#08183A", "md-bg-line": "#1C3F78", "md-bg-amber": "#D7B54A", "md-bg-crimson": "#E31B36", "md-text-bone": "#FFFFFF", "md-text-muted": "#D4DDF0", "md-text-muted-dim": "#91A3C7", "md-text-amber": "#F3D573", "md-text-crimson": "#FF778A", "md-border-line": "#31538B" },
+  santos: { "md-bg-stadium": "#070809", "md-bg-panel": "#1A1D20", "md-bg-panel-dark": "#111315", "md-bg-line": "#373C42", "md-bg-amber": "#E0C267", "md-bg-crimson": "#C83D46", "md-text-bone": "#FFFFFF", "md-text-muted": "#D9DADD", "md-text-muted-dim": "#A1A5AA", "md-text-amber": "#F7DD8D", "md-text-crimson": "#FF838B", "md-border-line": "#50565D" },
+  "sao-paulo": { "md-bg-stadium": "#120609", "md-bg-panel": "#2E1117", "md-bg-panel-dark": "#1D0B0F", "md-bg-line": "#5E1E29", "md-bg-amber": "#F0F0F0", "md-bg-crimson": "#E32636", "md-text-bone": "#FFFFFF", "md-text-muted": "#E8D7DA", "md-text-muted-dim": "#B7979D", "md-text-amber": "#FFFFFF", "md-text-crimson": "#FF7180", "md-border-line": "#78303B" },
+  flamengo: { "md-bg-stadium": "#100305", "md-bg-panel": "#2F080D", "md-bg-panel-dark": "#1D0508", "md-bg-line": "#66101B", "md-bg-amber": "#F0444E", "md-bg-crimson": "#D41427", "md-text-bone": "#FFFFFF", "md-text-muted": "#EBCFD3", "md-text-muted-dim": "#BE8A92", "md-text-amber": "#FF747C", "md-text-crimson": "#FF6A79", "md-border-line": "#831D2A" },
+  "inter-miami": { "md-bg-stadium": "#100A0F", "md-bg-panel": "#2A1925", "md-bg-panel-dark": "#1C1119", "md-bg-line": "#744258", "md-bg-amber": "#F7B5CD", "md-bg-crimson": "#EF6F9F", "md-text-bone": "#FFFFFF", "md-text-muted": "#EEDCE5", "md-text-muted-dim": "#C19BAB", "md-text-amber": "#FFD3E2", "md-text-crimson": "#FF9EC1", "md-border-line": "#92566F" },
+  brasil: { "md-bg-stadium": "#031B13", "md-bg-panel": "#06452F", "md-bg-panel-dark": "#052F22", "md-bg-line": "#0C704C", "md-bg-amber": "#F5D328", "md-bg-crimson": "#2674D9", "md-text-bone": "#FFFFFF", "md-text-muted": "#D5E9DF", "md-text-muted-dim": "#94BFA9", "md-text-amber": "#FFE75F", "md-text-crimson": "#79ADFF", "md-border-line": "#168A60" },
+  portugal: { "md-bg-stadium": "#23060C", "md-bg-panel": "#4B0E19", "md-bg-panel-dark": "#310A12", "md-bg-line": "#7E1D2B", "md-bg-amber": "#D7B747", "md-bg-crimson": "#D61732", "md-text-bone": "#FFFFFF", "md-text-muted": "#EFD5D9", "md-text-muted-dim": "#C398A0", "md-text-amber": "#F4D775", "md-text-crimson": "#FF778A", "md-border-line": "#9A3040" },
+  mocambique: { "md-bg-stadium": "#061B13", "md-bg-panel": "#123E2D", "md-bg-panel-dark": "#0A2A1F", "md-bg-line": "#276A4E", "md-bg-amber": "#E3C647", "md-bg-crimson": "#D72D37", "md-text-bone": "#FFFFFF", "md-text-muted": "#D7E7DF", "md-text-muted-dim": "#99BCAA", "md-text-amber": "#F6DD73", "md-text-crimson": "#FF7C85", "md-border-line": "#3B8063" },
+  "cabo-verde": { "md-bg-stadium": "#061329", "md-bg-panel": "#122E55", "md-bg-panel-dark": "#0A203E", "md-bg-line": "#28568D", "md-bg-amber": "#F1CE39", "md-bg-crimson": "#E73B4D", "md-text-bone": "#FFFFFF", "md-text-muted": "#D8E2F1", "md-text-muted-dim": "#9BAFCE", "md-text-amber": "#FFE16A", "md-text-crimson": "#FF8090", "md-border-line": "#3B6DA5" },
+};
+
+function getClubTheme(emblemId: string) {
+  return CLUB_THEMES[emblemId] || CLUB_THEMES.default;
+}
 
 const EMBLEM_MAP = EMBLEM_OPTIONS.reduce((acc, item) => {
   acc[item.id] = item;
@@ -2093,6 +2128,12 @@ export default function App() {
   const myEmblemId =
     (groupData?.players || []).find((player) => String(player?.id || "") === String(myPlayerId || ""))?.emblemId ||
     getEmblemIdByName(groupData?.players || [], myName);
+
+  useEffect(() => {
+    const clubTheme = getClubTheme(myEmblemId || "default");
+    applyTheme(clubTheme);
+    document.documentElement.dataset.clubTheme = myEmblemId || "default";
+  }, [myEmblemId]);
   const inviteLink = buildInviteLink(groupCode);
 
   const handleTouchStart = (e) => {
@@ -2206,7 +2247,7 @@ export default function App() {
 
       {phase === "app" && (
         <div
-          className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost"
+          className="min-h-screen md-bg-stadium font-inter md-text-bone md-ui-boost md-app-shell"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -2244,7 +2285,7 @@ export default function App() {
 
           <Tabs tab={tab} setTab={setTab} unreadChat={unreadChat} />
 
-          <main className="max-w-2xl mx-auto px-4 pb-24 pt-4 md-mobile-pad-bottom">
+          <main className="max-w-2xl mx-auto px-4 pb-24 pt-5 md-mobile-pad-bottom md-main-content">
             {tab === "log" && (
               <div className="space-y-6">
                 <LogMatch
