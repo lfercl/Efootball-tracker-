@@ -160,3 +160,10 @@ body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
 }
 @media (min-width:640px){.md-overview-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (prefers-reduced-motion:reduce){.md-overview-tile,.md-mobile-group-panel,.md-mobile-more-menu,.md-overview-live span{animation:none !important}}
+
+/* Keep the enlarged club emblem balanced with the compact mobile header. */
+@media (max-width: 639px) {
+  .md-user-pill .md-emblem-3d {
+    --emblem-size: 44px !important;
+  }
+}

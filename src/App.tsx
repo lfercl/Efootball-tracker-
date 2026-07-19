@@ -1060,11 +1060,14 @@ function getEmblemIdByName(players, name) {
 
 function EmblemBadge({ emblemId, size = 32 }) {
   const emblem = EMBLEM_MAP[emblemId];
+  const requestedSize = Math.max(1, Number(size) || 32);
+  const displaySize = Math.round(requestedSize * 1.2);
+
   if (!emblem) {
     return (
       <span
         className="inline-flex items-center justify-center rounded-full border border-white/20 bg-black/15 text-[10px]"
-        style={{ width: size, height: size }}
+        style={{ width: displaySize, height: displaySize }}
       >
         C
       </span>
@@ -1072,7 +1075,12 @@ function EmblemBadge({ emblemId, size = 32 }) {
   }
 
   return (
-    <span className="md-emblem-3d" style={{ "--emblem-size": size + "px" } as React.CSSProperties} title={emblem.label}>
+    <span
+      className="md-emblem-3d"
+      data-emblem-scale="large"
+      style={{ "--emblem-size": displaySize + "px" } as React.CSSProperties}
+      title={emblem.label}
+    >
       <span className="md-emblem-3d__shine" aria-hidden="true" />
       <img src={emblem.url} alt={emblem.label} className="md-emblem-3d__image" loading="lazy" referrerPolicy="no-referrer" />
     </span>
