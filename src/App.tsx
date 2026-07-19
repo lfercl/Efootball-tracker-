@@ -879,9 +879,23 @@ function normalizeFmaPlayback(playback, playlistId) {
   };
 }
 
+function getStablePlayerId(player) {
+  const explicitId = String(player?.id || "").trim();
+  if (explicitId) return explicitId;
+  const byName = String(player?.name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return byName ? `legacy-${byName}` : genId();
+}
+
 function normalizePlayer(player) {
   return {
     ...player,
+    id: getStablePlayerId(player),
     emblemId: typeof player?.emblemId === "string" ? player.emblemId : "",
   };
 }
