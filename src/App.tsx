@@ -1588,6 +1588,18 @@ function NameWithEmblem({ name, emblemId, size = 32, textClassName = "", classNa
   );
 }
 
+function PresenceBadge({ online, className = "" }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-oswald tracking-wide border ${
+        online ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-200" : "border-white/15 bg-black/15 text-white/70"
+      } ${className}`}
+    >
+      {online ? "ON-LINE" : "OFF-LINE"}
+    </span>
+  );
+}
+
 function buildInviteLink(code) {
   if (!code || typeof window === "undefined") return "";
   const url = new URL(window.location.href);
@@ -1597,6 +1609,10 @@ function buildInviteLink(code) {
 
 function getGroupCacheKey(code) {
   return `group-cache:${String(code || "").toUpperCase()}`;
+}
+
+function getPresenceDocKey(groupCode, playerId) {
+  return `presence:${String(groupCode || "").toUpperCase()}:${String(playerId || "").trim()}`;
 }
 
 function cacheGroupLocally(code, data) {
@@ -1615,6 +1631,24 @@ function readCachedGroup(code) {
   } catch {
     return null;
   }
+}
+
+function getPresenceSnapshot(rawValue) {
+  try {
+    if (!rawValue) return {};
+    const parsed = typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isPresenceOnline(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.status !== "online") return false;
+  const lastSeenAt = Number(entry.lastSeenAt || 0);
+  if (!lastSeenAt) return false;
+  return Date.now() - lastSeenAt < 30000;
 }
 
 function hasMeaningfulGroupChange(prev, next) {
@@ -2114,6 +2148,7 @@ export default function App() {
   const [feedOpen, setFeedOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState("visual");
+  const [presenceMap, setPresenceMap] = useState({});
   const [authIsAdmin, setAuthIsAdmin] = useState(false);
   const [codeIsAdmin, setCodeIsAdmin] = useState(false);
   const [headerHidden, setHeaderHidden] = useState(false);
@@ -2132,6 +2167,11 @@ export default function App() {
   const nativePushTokenRef = useRef("");
   const nativePushWaiterRef = useRef<null | { resolve: (token: string) => void; reject: (error: Error) => void }>(null);
   const tabRef = useRef(tab);
+  const presenceHeartbeatRef = useRef(0);
+  const presenceEntryRef = useRef({});
+  const presencePlayersRef = useRef([]);
+  const presenceRefreshRef = useRef(null);
+  const myNameRef = useRef(myName);
   const isAdmin = authIsAdmin || codeIsAdmin;
 
   useEffect(() => {
@@ -2206,6 +2246,92 @@ export default function App() {
     setMyPlayerId(byName.id);
     storageSet("my-player-id", byName.id, false);
   }, [groupData?.players, myName, myPlayerId]);
+
+  useEffect(() => {
+    presencePlayersRef.current = groupData?.players || [];
+    if (presenceRefreshRef.current) {
+      void presenceRefreshRef.current();
+    }
+  }, [groupData?.players]);
+
+  useEffect(() => {
+    myNameRef.current = myName;
+  }, [myName]);
+
+  useEffect(() => {
+    presenceEntryRef.current = {};
+    setPresenceMap({});
+  }, [groupCode]);
+
+  useEffect(() => {
+    if (phase !== "app" || !groupCode || !myPlayerId) return;
+    let cancelled = false;
+
+    const refreshPresence = async () => {
+      const players = presencePlayersRef.current || [];
+      if (!players.length) return;
+
+      const entries = await Promise.all(
+        players.map(async (player) => {
+          if (!player?.id) return ["", null];
+          const raw = await storageGet(getPresenceDocKey(groupCode, player.id), true);
+          return [player.id, getPresenceSnapshot(raw)];
+        }),
+      );
+
+      if (cancelled) return;
+      const nextMap = Object.fromEntries(entries.filter(([id]) => Boolean(id)));
+      setPresenceMap(nextMap);
+    };
+
+    const writeOwnPresence = async (status) => {
+      if (!myPlayerId || !groupCode) return;
+      const entry = {
+        playerId: myPlayerId,
+        name: myNameRef.current || "",
+        status,
+        lastSeenAt: Date.now(),
+      };
+      presenceEntryRef.current = entry;
+      await storageSet(getPresenceDocKey(groupCode, myPlayerId), JSON.stringify(entry), true);
+    };
+
+    const heartbeat = async () => {
+      await writeOwnPresence(document.visibilityState === "visible" ? "online" : "offline");
+      await refreshPresence();
+    };
+
+    presenceRefreshRef.current = refreshPresence;
+
+    void heartbeat();
+    const timer = window.setInterval(() => {
+      if (Date.now() - presenceHeartbeatRef.current < 5000) return;
+      presenceHeartbeatRef.current = Date.now();
+      void heartbeat();
+    }, 12000);
+
+    const handleVisibilityChange = () => {
+      void writeOwnPresence(document.visibilityState === "visible" ? "online" : "offline");
+    };
+
+    const handleBeforeUnload = () => {
+      void writeOwnPresence("offline");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      presenceRefreshRef.current = null;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+      void writeOwnPresence("offline");
+    };
+  }, [phase, groupCode, myPlayerId]);
 
   useEffect(() => {
     if (!auth) return;
@@ -3445,6 +3571,7 @@ export default function App() {
                   onDeletePlayer={handleDeletePlayer}
                   onCallPlayer={handleCallPlayer}
                   isAdmin={isAdmin}
+                  presenceMap={presenceMap}
                 />
               </div>
             )}
@@ -3984,7 +4111,7 @@ function Tabs({ tab, setTab, unreadChat = 0 }) {
 
 /* ---------------- User Management ---------------- */
 
-function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, isAdmin }) {
+function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, isAdmin, presenceMap }) {
   const [newPlayer, setNewPlayer] = useState("");
   const [error, setError] = useState("");
 
@@ -4024,7 +4151,10 @@ function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, is
           {players.length === 0 && <p className="md-text-muted text-sm">Nenhum usuário cadastrado ainda.</p>}
           {players.map((player) => (
             <div key={player.id} className="flex items-center justify-between rounded-lg px-3 py-2 md-bg-panel-dark-40">
-              <NameWithEmblem name={player.name} emblemId={player.emblemId} size={38} />
+                <div className="flex min-w-0 items-center gap-2">
+                  <PresenceBadge online={isPresenceOnline(presenceMap[player.id])} />
+                  <NameWithEmblem name={player.name} emblemId={player.emblemId} size={38} />
+                </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
