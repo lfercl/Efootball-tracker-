@@ -46,34 +46,65 @@ async function sendActivity({ groupCode, actorName, title, body, tab, type, even
       normalizedName(entry.playerName) !== normalizedName(actorName)
     );
 
-  for (let start = 0; start < recipients.length; start += 500) {
-    const batch = recipients.slice(start, start + 500);
-    const response = await admin.messaging().sendEachForMulticast({
-      tokens: batch.map((entry) => entry.token),
-      data: {
-        title: String(title || "Nova atividade"),
-        body: String(body || "Abra a app para ver as novidades."),
-        tab: String(tab || "results"),
-        type: String(type || "activity"),
-        eventId: String(eventId || ""),
-        groupCode: String(groupCode),
-      },
-      webpush: {
-        headers: {
-          Urgency: "high",
-          TTL: "86400",
-        },
-      },
-    });
+  const webRecipients = recipients.filter((entry) => String(entry.platform || "web") === "web");
+  const androidRecipients = recipients.filter((entry) => String(entry.platform || "") === "android");
 
-    const invalidDocuments = [];
-    response.responses.forEach((result, index) => {
-      if (!result.success && INVALID_TOKEN_CODES.has(result.error?.code)) {
-        invalidDocuments.push(batch[index].document.ref);
-      }
-    });
-    await Promise.all(invalidDocuments.map((reference) => reference.delete()));
-  }
+  const sendInBatches = async (items, buildMessage) => {
+    for (let start = 0; start < items.length; start += 500) {
+      const batch = items.slice(start, start + 500);
+      const response = await admin.messaging().sendEachForMulticast(buildMessage(batch));
+
+      const invalidDocuments = [];
+      response.responses.forEach((result, index) => {
+        if (!result.success && INVALID_TOKEN_CODES.has(result.error?.code)) {
+          invalidDocuments.push(batch[index].document.ref);
+        }
+      });
+      await Promise.all(invalidDocuments.map((reference) => reference.delete()));
+    }
+  };
+
+  await sendInBatches(webRecipients, (batch) => ({
+    tokens: batch.map((entry) => entry.token),
+    data: {
+      title: String(title || "Nova atividade"),
+      body: String(body || "Abra a app para ver as novidades."),
+      tab: String(tab || "results"),
+      type: String(type || "activity"),
+      eventId: String(eventId || ""),
+      groupCode: String(groupCode),
+    },
+    webpush: {
+      headers: {
+        Urgency: "high",
+        TTL: "86400",
+      },
+    },
+  }));
+
+  await sendInBatches(androidRecipients, (batch) => ({
+    tokens: batch.map((entry) => entry.token),
+    notification: {
+      title: String(title || "Nova atividade"),
+      body: String(body || "Abra a app para ver as novidades."),
+    },
+    data: {
+      title: String(title || "Nova atividade"),
+      body: String(body || "Abra a app para ver as novidades."),
+      tab: String(tab || "results"),
+      type: String(type || "activity"),
+      eventId: String(eventId || ""),
+      groupCode: String(groupCode),
+    },
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "default",
+        clickAction: "FCM_PLUGIN_ACTIVITY",
+      },
+      ttl: 86400000,
+    },
+  }));
 }
 
 export const notifyOnGroupActivity = onDocumentWritten("sharedStorage/{docId}", async (event) => {

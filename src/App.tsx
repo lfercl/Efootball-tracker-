@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 interface ImportMetaEnv {
@@ -270,20 +271,24 @@ function ColorSettings({
                 <strong>
                   {notificationState === "active" && "Ativadas"}
                   {notificationState === "inactive" && "Desativadas"}
-                  {notificationState === "blocked" && "Bloqueadas no navegador"}
-                  {notificationState === "unsupported" && "Não suportadas neste navegador"}
+                  {notificationState === "blocked" && (IS_NATIVE_APP ? "Bloqueadas no telemóvel" : "Bloqueadas no navegador")}
+                  {notificationState === "unsupported" && (IS_NATIVE_APP ? "Não suportadas neste telemóvel" : "Não suportadas neste navegador")}
                   {notificationState === "error" && "Erro ao configurar"}
                   {notificationState === "checking" && "A verificar…"}
                 </strong>
               </p>
               {notificationState === "blocked" && (
                 <p className="mt-2 text-xs md-text-muted">
-                  Abra as permissões deste site no navegador, permita notificações e volte a tentar.
+                  {IS_NATIVE_APP
+                    ? "Abra as definições de notificações do telemóvel, permita avisos e volte a tentar."
+                    : "Abra as permissões deste site no navegador, permita notificações e volte a tentar."}
                 </p>
               )}
               {notificationState === "unsupported" && (
                 <p className="mt-2 text-xs md-text-muted">
-                  Use um navegador compatível e, no iPhone, instale primeiro a app no ecrã principal.
+                  {IS_NATIVE_APP
+                    ? "Verifique se esta instalação Android suporta Google Play Services e push notifications."
+                    : "Use um navegador compatível e, no iPhone, instale primeiro a app no ecrã principal."}
                 </p>
               )}
             </div>
@@ -678,6 +683,8 @@ const auth = firebaseApp
 const PUSH_ENABLED_KEY = "push-notifications-enabled";
 const PUSH_DOC_KEY = "push-notifications-document";
 const PUSH_GROUP_KEY = "push-notifications-group";
+const IS_NATIVE_APP = Capacitor.isNativePlatform();
+const HAS_NATIVE_PUSH = Capacitor.isPluginAvailable("PushNotifications");
 const PUSH_TABS = new Set(["log", "chat", "results", "competition", "standings", "h2h", "agenda"]);
 
 function getRequestedPushTab() {
@@ -2122,7 +2129,14 @@ export default function App() {
   const lastScrollYRef = useRef(0);
   const finalizingLeagueRef = useRef(false);
   const pushSetupRef = useRef(false);
+  const nativePushTokenRef = useRef("");
+  const nativePushWaiterRef = useRef<null | { resolve: (token: string) => void; reject: (error: Error) => void }>(null);
+  const tabRef = useRef(tab);
   const isAdmin = authIsAdmin || codeIsAdmin;
+
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
 
   useEffect(() => {
     (async () => {
@@ -2312,11 +2326,104 @@ export default function App() {
     window.localStorage.removeItem(PUSH_GROUP_KEY);
   };
 
+  const upsertPushTokenRegistration = async (token: string, platform: "web" | "android") => {
+    if (!db) throw new Error("Firestore indisponível para guardar token push.");
+    const tokenDocumentId = await hashPushToken(token);
+    const previousDocumentId = window.localStorage.getItem(PUSH_DOC_KEY);
+
+    if (previousDocumentId && previousDocumentId !== tokenDocumentId) {
+      try {
+        await deleteDoc(doc(db, "pushTokens", previousDocumentId));
+      } catch {}
+    }
+
+    await setDoc(
+      doc(db, "pushTokens", tokenDocumentId),
+      {
+        token,
+        groupCode,
+        playerName: myName,
+        playerId: myPlayerId || "",
+        origin: typeof window !== "undefined" ? window.location.origin : "capacitor://localhost",
+        platform,
+        enabled: true,
+        updatedAt: Date.now(),
+      },
+      { merge: true },
+    );
+
+    window.localStorage.setItem(PUSH_DOC_KEY, tokenDocumentId);
+    window.localStorage.setItem(PUSH_GROUP_KEY, groupCode);
+  };
+
+  const waitForNativePushToken = () => {
+    if (nativePushTokenRef.current) return Promise.resolve(nativePushTokenRef.current);
+    return new Promise<string>((resolve, reject) => {
+      nativePushWaiterRef.current = { resolve, reject };
+      window.setTimeout(() => {
+        if (!nativePushWaiterRef.current) return;
+        nativePushWaiterRef.current = null;
+        reject(new Error("Tempo limite ao obter token push nativo."));
+      }, 12000);
+    });
+  };
+
   const enablePushNotifications = async ({ requestPermission = true, quiet = false } = {}) => {
     if (notificationBusy || pushSetupRef.current) return false;
     pushSetupRef.current = true;
     setNotificationBusy(true);
     try {
+      if (IS_NATIVE_APP) {
+        if (!HAS_NATIVE_PUSH || !db) {
+          setNotificationState("unsupported");
+          if (!quiet) {
+            pushToast({
+              title: "Notificações indisponíveis",
+              body: "Este dispositivo não suporta notificações push nesta versão.",
+            });
+          }
+          return false;
+        }
+
+        let permission = await PushNotifications.checkPermissions();
+        if (permission.receive === "prompt" && requestPermission) {
+          permission = await PushNotifications.requestPermissions();
+        }
+        if (permission.receive === "denied") {
+          setNotificationState("blocked");
+          window.localStorage.removeItem(PUSH_ENABLED_KEY);
+          if (!quiet) {
+            pushToast({
+              title: "Notificações bloqueadas",
+              body: "Permita notificações nas definições do telemóvel e tente novamente.",
+            });
+          }
+          return false;
+        }
+        if (permission.receive !== "granted") {
+          setNotificationState("inactive");
+          return false;
+        }
+        if (!groupCode || !myName) {
+          setNotificationState("inactive");
+          return false;
+        }
+
+        await PushNotifications.register();
+        const token = await waitForNativePushToken();
+        await upsertPushTokenRegistration(token, "android");
+
+        window.localStorage.setItem(PUSH_ENABLED_KEY, "1");
+        setNotificationState("active");
+        if (!quiet) {
+          pushToast({
+            title: "Notificações ativadas",
+            body: "Vai receber mensagens e resultados mesmo com a app fechada.",
+          });
+        }
+        return true;
+      }
+
       const browserSupportsNotifications =
         typeof window !== "undefined" &&
         "Notification" in window &&
@@ -2374,31 +2481,9 @@ export default function App() {
         throw new Error("O navegador não devolveu um token de notificações.");
       }
 
-      const tokenDocumentId = await hashPushToken(token);
-      const previousDocumentId = window.localStorage.getItem(PUSH_DOC_KEY);
-      if (previousDocumentId && previousDocumentId !== tokenDocumentId) {
-        try {
-          await deleteDoc(doc(db, "pushTokens", previousDocumentId));
-        } catch {}
-      }
-
-      await setDoc(
-        doc(db, "pushTokens", tokenDocumentId),
-        {
-          token,
-          groupCode,
-          playerName: myName,
-          playerId: myPlayerId || "",
-          origin: window.location.origin,
-          enabled: true,
-          updatedAt: Date.now(),
-        },
-        { merge: true },
-      );
+      await upsertPushTokenRegistration(token, "web");
 
       window.localStorage.setItem(PUSH_ENABLED_KEY, "1");
-      window.localStorage.setItem(PUSH_DOC_KEY, tokenDocumentId);
-      window.localStorage.setItem(PUSH_GROUP_KEY, groupCode);
       setNotificationState("active");
       if (!quiet) {
         pushToast({
@@ -2413,7 +2498,9 @@ export default function App() {
       if (!quiet) {
         pushToast({
           title: "Não foi possível ativar",
-          body: "Tente novamente. Se continuar, confirme as permissões do navegador.",
+          body: IS_NATIVE_APP
+            ? "Tente novamente. Se continuar, confirme as permissões no telemóvel."
+            : "Tente novamente. Se continuar, confirme as permissões do navegador.",
         });
       }
       return false;
@@ -2428,7 +2515,13 @@ export default function App() {
     pushSetupRef.current = true;
     setNotificationBusy(true);
     try {
-      if (firebaseApp && await isSupported()) {
+      if (IS_NATIVE_APP && HAS_NATIVE_PUSH) {
+        try {
+          await PushNotifications.unregister();
+        } catch (error) {
+          console.warn("Não foi possível desregistar o push nativo.", error);
+        }
+      } else if (firebaseApp && await isSupported()) {
         try {
           await deleteToken(getMessaging(firebaseApp));
         } catch (error) {
@@ -2449,33 +2542,118 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
-      setNotificationState("unsupported");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      setNotificationState("blocked");
-      return;
-    }
-    const locallyEnabled = window.localStorage.getItem(PUSH_ENABLED_KEY) === "1";
-    if (!locallyEnabled) {
-      setNotificationState("inactive");
-      return;
-    }
-    if (phase !== "app" || !groupCode || !myName) return;
+    const initNotificationState = async () => {
+      if (IS_NATIVE_APP) {
+        if (!HAS_NATIVE_PUSH) {
+          setNotificationState("unsupported");
+          return;
+        }
+        const permission = await PushNotifications.checkPermissions();
+        if (permission.receive === "denied") {
+          setNotificationState("blocked");
+          return;
+        }
 
-    const previousGroup = window.localStorage.getItem(PUSH_GROUP_KEY);
-    if (previousGroup && previousGroup !== groupCode) {
-      removeStoredPushSubscription().finally(() => {
-        window.localStorage.removeItem(PUSH_ENABLED_KEY);
+        const locallyEnabled = window.localStorage.getItem(PUSH_ENABLED_KEY) === "1";
+        if (!locallyEnabled) {
+          setNotificationState("inactive");
+          return;
+        }
+        if (phase !== "app" || !groupCode || !myName) return;
+
+        const previousGroup = window.localStorage.getItem(PUSH_GROUP_KEY);
+        if (previousGroup && previousGroup !== groupCode) {
+          removeStoredPushSubscription().finally(() => {
+            window.localStorage.removeItem(PUSH_ENABLED_KEY);
+            setNotificationState("inactive");
+          });
+          return;
+        }
+        enablePushNotifications({ requestPermission: false, quiet: true });
+        return;
+      }
+
+      if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
+        setNotificationState("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setNotificationState("blocked");
+        return;
+      }
+      const locallyEnabled = window.localStorage.getItem(PUSH_ENABLED_KEY) === "1";
+      if (!locallyEnabled) {
         setNotificationState("inactive");
-      });
-      return;
-    }
-    enablePushNotifications({ requestPermission: false, quiet: true });
+        return;
+      }
+      if (phase !== "app" || !groupCode || !myName) return;
+
+      const previousGroup = window.localStorage.getItem(PUSH_GROUP_KEY);
+      if (previousGroup && previousGroup !== groupCode) {
+        removeStoredPushSubscription().finally(() => {
+          window.localStorage.removeItem(PUSH_ENABLED_KEY);
+          setNotificationState("inactive");
+        });
+        return;
+      }
+      enablePushNotifications({ requestPermission: false, quiet: true });
+    };
+
+    initNotificationState().catch(() => setNotificationState("error"));
   }, [phase, groupCode, myName, myPlayerId]);
 
   useEffect(() => {
+    if (!IS_NATIVE_APP || !HAS_NATIVE_PUSH) return;
+
+    let removed = false;
+    const registrationListener = PushNotifications.addListener("registration", (token) => {
+      const value = String(token?.value || "").trim();
+      if (!value) return;
+      nativePushTokenRef.current = value;
+      if (nativePushWaiterRef.current) {
+        nativePushWaiterRef.current.resolve(value);
+        nativePushWaiterRef.current = null;
+      }
+    });
+
+    const registrationErrorListener = PushNotifications.addListener("registrationError", (error) => {
+      console.error("Erro de registo push nativo", error);
+      if (nativePushWaiterRef.current) {
+        nativePushWaiterRef.current.reject(new Error("Falha ao registar o push no telemóvel."));
+        nativePushWaiterRef.current = null;
+      }
+    });
+
+    const receivedListener = PushNotifications.addListener("pushNotificationReceived", (notification) => {
+      const data = notification?.data || {};
+      const destination = PUSH_TABS.has(data.tab || "") ? data.tab : "results";
+      pushToast({
+        title: notification?.title || data.title || "Nova atividade",
+        body: notification?.body || data.body || "Abra a app para ver as novidades.",
+      });
+      if (destination === "results") setUnread((value) => value + 1);
+      if (destination === "chat" && tabRef.current !== "chat") setUnreadChat((value) => value + 1);
+    });
+
+    const actionListener = PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+      const data = action?.notification?.data || {};
+      const destination = PUSH_TABS.has(data.tab || "") ? data.tab : "results";
+      setTab(destination);
+      if (destination === "chat") setUnreadChat(0);
+    });
+
+    return () => {
+      if (removed) return;
+      removed = true;
+      registrationListener.then((listener) => listener.remove()).catch(() => {});
+      registrationErrorListener.then((listener) => listener.remove()).catch(() => {});
+      receivedListener.then((listener) => listener.remove()).catch(() => {});
+      actionListener.then((listener) => listener.remove()).catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    if (IS_NATIVE_APP) return;
     if (!firebaseApp || phase !== "app") return;
     let unsubscribe = () => {};
     let cancelled = false;
@@ -2501,6 +2679,7 @@ export default function App() {
   }, [phase, tab]);
 
   useEffect(() => {
+    if (IS_NATIVE_APP) return;
     if (!("serviceWorker" in navigator)) return;
     const handleWorkerMessage = (event) => {
       if (event.data?.type !== "OPEN_APP_TAB") return;
