@@ -384,7 +384,7 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import {
   Trophy,
@@ -710,6 +710,40 @@ async function hashPushToken(token) {
     .join("");
 }
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLocaleLowerCase("pt-PT");
+}
+
+function createPasswordSalt() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sha256Hex(value) {
+  const encoded = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashGroupPassword(password, salt) {
+  return sha256Hex(`${String(salt || "")}:${String(password || "")}`);
+}
+
+function uniqueStringList(values) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 
 /* ---------------- storage helpers (defensive: shared storage on
@@ -719,10 +753,15 @@ const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 async function storageGet(key, shared) {
   try {
     if (!shared) return window.localStorage.getItem(key);
-    if (!db) return null;
+    if (!db || !auth?.currentUser) return null;
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
     const snap = await getDoc(ref);
-    return snap.exists() ? snap.data().value ?? null : null;
+    if (!snap.exists()) return null;
+    const storedValue = snap.data().value ?? null;
+    if (String(key || "").startsWith("group:") && storedValue && typeof storedValue === "object") {
+      return JSON.stringify(storedValue);
+    }
+    return storedValue;
   } catch (e) {
     console.error("storageGet", e);
     return null;
@@ -734,9 +773,32 @@ async function storageSet(key, value, shared) {
       window.localStorage.setItem(key, value);
       return true;
     }
-    if (!db) return false;
+    if (!db || !auth?.currentUser) return false;
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
-    await setDoc(ref, { value, updatedAt: Date.now() }, { merge: true });
+    const now = Date.now();
+    const keyStr = String(key || "");
+    if (keyStr.startsWith("group:") && typeof value === "string") {
+      const parsed = normalizeGroupData(JSON.parse(value));
+      const memberUids = uniqueStringList([...(parsed.memberUids || []), auth.currentUser.uid]);
+      const adminUids = uniqueStringList(parsed.adminUids || []);
+      await setDoc(
+        ref,
+        {
+          value: {
+            ...parsed,
+            memberUids,
+            adminUids,
+          },
+          updatedAt: now,
+          groupCode: keyStr.slice("group:".length).toUpperCase(),
+          memberUids,
+          adminUids,
+        },
+        { merge: true }
+      );
+      return true;
+    }
+    await setDoc(ref, { value, updatedAt: now }, { merge: true });
     return true;
   } catch (e) {
     console.error("storageSet", e);
@@ -900,6 +962,19 @@ function normalizePlayer(player) {
   };
 }
 
+function normalizeMemberAccount(account) {
+  return {
+    id: String(account?.id || genId()),
+    username: String(account?.username || "").trim(),
+    usernameNorm: normalizeUsername(account?.usernameNorm || account?.username),
+    playerId: String(account?.playerId || "").trim(),
+    role: String(account?.role || "member") === "admin" ? "admin" : "member",
+    passwordHash: String(account?.passwordHash || "").trim(),
+    passwordSalt: String(account?.passwordSalt || "").trim(),
+    createdAt: Number(account?.createdAt || Date.now()),
+  };
+}
+
 function normalizeGroupData(data) {
   const normalizedPlaylistId = typeof data?.fmaPlaylistId === "string" ? data.fmaPlaylistId : "";
   const normalizedMessages = (data?.messages || []).map((message) => {
@@ -928,12 +1003,34 @@ function normalizeGroupData(data) {
     votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
   }));
 
+  const normalizedDeletedMatches = (data?.deletedMatches || []).map((entry) => ({
+    ...entry,
+    deletedAt: Number(entry?.deletedAt || Date.now()),
+    deletedBy: String(entry?.deletedBy || "Administrador"),
+    match: {
+      ...(entry?.match || {}),
+      media: Array.isArray(entry?.match?.media) ? entry.match.media : [],
+      votes: entry?.match?.votes && typeof entry.match.votes === "object" ? entry.match.votes : {},
+    },
+  }));
+
+  const normalizedMemberAccounts = (data?.memberAccounts || [])
+    .map(normalizeMemberAccount)
+    .filter((account) => account.usernameNorm && account.passwordHash && account.passwordSalt);
+
+  const normalizedMemberUids = uniqueStringList(data?.memberUids || []);
+  const normalizedAdminUids = uniqueStringList(data?.adminUids || []);
+
   return {
     ...data,
     fmaPlaylistId: normalizedPlaylistId,
     fmaPlayback: normalizeFmaPlayback(data?.fmaPlayback, normalizedPlaylistId),
     players: (data?.players || []).map(normalizePlayer),
     matches: normalizedMatches,
+    deletedMatches: normalizedDeletedMatches,
+    memberAccounts: normalizedMemberAccounts,
+    memberUids: normalizedMemberUids,
+    adminUids: normalizedAdminUids,
     messages: normalizedMessages,
     schedules: Array.isArray(data?.schedules) ? data.schedules : [],
     activeLeague:
@@ -2165,6 +2262,10 @@ export default function App() {
   const [presenceMap, setPresenceMap] = useState({});
   const [authIsAdmin, setAuthIsAdmin] = useState(false);
   const [codeIsAdmin, setCodeIsAdmin] = useState(false);
+  const [authUid, setAuthUid] = useState("");
+  const [groupRoleAdmin, setGroupRoleAdmin] = useState(false);
+  const [myAccountId, setMyAccountId] = useState("");
+  const [myRole, setMyRole] = useState("member");
   const [headerHidden, setHeaderHidden] = useState(false);
   const reminderSentRef = useRef<Record<string, boolean>>({});
   const touchStartXRef = useRef(0);
@@ -2186,7 +2287,8 @@ export default function App() {
   const presencePlayersRef = useRef([]);
   const presenceRefreshRef = useRef(null);
   const myNameRef = useRef(myName);
-  const isAdmin = authIsAdmin || codeIsAdmin;
+  const isGroupAdmin = myRole === "admin" || groupRoleAdmin;
+  const isAdmin = authIsAdmin || codeIsAdmin || isGroupAdmin;
 
   useEffect(() => {
     tabRef.current = tab;
@@ -2197,14 +2299,34 @@ export default function App() {
       const name = await storageGet("my-name", false);
       const playerId = await storageGet("my-player-id", false);
       const code = await storageGet("my-group", false);
+      const accountId = await storageGet("my-account-id", false);
+      const accountSecret = await storageGet("my-account-secret", false);
       const adminUnlock = await storageGet("admin-code-unlocked", false);
       if (name) setMyName(name);
       if (playerId) setMyPlayerId(playerId);
+      if (accountId) setMyAccountId(accountId);
       if (adminUnlock === "1") setCodeIsAdmin(true);
       if (code) {
+        if (!authUid) {
+          setPhase("loading");
+          return;
+        }
         setGroupCode(code);
         const cached = readCachedGroup(code);
         if (cached) {
+          const hasAccounts = Array.isArray(cached.memberAccounts) && cached.memberAccounts.length > 0;
+          if (hasAccounts) {
+            const account = cached.memberAccounts.find((entry) => entry.id === accountId);
+            if (!account || !accountSecret || account.passwordHash !== accountSecret) {
+              setStorageOk(true);
+              setPhase("join");
+              return;
+            }
+            const linkedPlayer = (cached.players || []).find((player) => player.id === account.playerId);
+            if (linkedPlayer?.name) setMyName(linkedPlayer.name);
+            if (linkedPlayer?.id) setMyPlayerId(linkedPlayer.id);
+            setMyRole(account.role === "admin" ? "admin" : "member");
+          }
           setGroupData(cached);
           lastSeenCount.current = cached.matches.length;
           lastSeenMessages.current = cached.messages.length;
@@ -2216,6 +2338,19 @@ export default function App() {
         if (data) {
           try {
             const parsed = normalizeGroupData(JSON.parse(data));
+            const hasAccounts = Array.isArray(parsed.memberAccounts) && parsed.memberAccounts.length > 0;
+            if (hasAccounts) {
+              const account = parsed.memberAccounts.find((entry) => entry.id === accountId);
+              if (!account || !accountSecret || account.passwordHash !== accountSecret) {
+                setStorageOk(true);
+                setPhase("join");
+                return;
+              }
+              const linkedPlayer = (parsed.players || []).find((player) => player.id === account.playerId);
+              if (linkedPlayer?.name) setMyName(linkedPlayer.name);
+              if (linkedPlayer?.id) setMyPlayerId(linkedPlayer.id);
+              setMyRole(account.role === "admin" ? "admin" : "member");
+            }
             setGroupData(parsed);
             cacheGroupLocally(code, parsed);
             lastSeenCount.current = parsed.matches.length;
@@ -2246,7 +2381,7 @@ export default function App() {
       } catch {}
     })();
 
-  }, []);
+  }, [authUid]);
 
   useEffect(() => {
     if (!groupData?.players?.length) return;
@@ -2260,6 +2395,47 @@ export default function App() {
     setMyPlayerId(byName.id);
     storageSet("my-player-id", byName.id, false);
   }, [groupData?.players, myName, myPlayerId]);
+
+  useEffect(() => {
+    if (phase !== "app") return;
+    const accounts = groupData?.memberAccounts || [];
+    if (!accounts.length) return;
+
+    let cancelled = false;
+    (async () => {
+      const accountId = await storageGet("my-account-id", false);
+      const accountSecret = await storageGet("my-account-secret", false);
+      const account = accounts.find((entry) => entry.id === accountId);
+
+      if (!account || !accountSecret || account.passwordHash !== accountSecret) {
+        if (cancelled) return;
+        await storageSet("my-account-id", "", false);
+        await storageSet("my-account-secret", "", false);
+        setMyAccountId("");
+        setMyRole("member");
+        setPhase("join");
+        return;
+      }
+
+      const linkedPlayer = (groupData?.players || []).find((player) => player.id === account.playerId);
+      if (cancelled) return;
+
+      setMyAccountId(account.id);
+      setMyRole(account.role === "admin" ? "admin" : "member");
+      if (linkedPlayer?.id && linkedPlayer.id !== myPlayerId) {
+        setMyPlayerId(linkedPlayer.id);
+        storageSet("my-player-id", linkedPlayer.id, false);
+      }
+      if (linkedPlayer?.name && linkedPlayer.name !== myName) {
+        setMyName(linkedPlayer.name);
+        storageSet("my-name", linkedPlayer.name, false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, groupData?.memberAccounts, groupData?.players, myPlayerId, myName]);
 
   useEffect(() => {
     presencePlayersRef.current = groupData?.players || [];
@@ -2349,11 +2525,25 @@ export default function App() {
 
   useEffect(() => {
     if (!auth) return;
+    signInAnonymously(auth).catch((error) => {
+      console.error("Falha ao autenticar no Firebase.", error);
+    });
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        signInAnonymously(auth).catch((error) => {
+          console.error("Falha ao restabelecer autenticacao anonima.", error);
+        });
+      }
       setAuthIsAdmin(user?.uid === ADMIN_UID);
+      setAuthUid(String(user?.uid || ""));
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const adminUids = uniqueStringList(groupData?.adminUids || []);
+    setGroupRoleAdmin(Boolean(authUid && adminUids.includes(authUid)));
+  }, [groupData?.adminUids, authUid]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -2839,9 +3029,21 @@ export default function App() {
   }, []);
 
   const saveGroup = async (data) => {
-    setGroupData(data);
-    cacheGroupLocally(groupCode, data);
-    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(data), true);
+    if (!authUid) {
+      setStorageOk(false);
+      return false;
+    }
+    const normalized = normalizeGroupData(data);
+    const memberUids = uniqueStringList([...(normalized.memberUids || []), authUid]);
+    const adminUids = uniqueStringList(normalized.adminUids || []);
+    const securedData = {
+      ...normalized,
+      memberUids,
+      adminUids,
+    };
+    setGroupData(securedData);
+    cacheGroupLocally(groupCode, securedData);
+    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(securedData), true);
     setStorageOk(Boolean(persisted));
     return Boolean(persisted);
   };
@@ -2852,6 +3054,7 @@ export default function App() {
     players.some((p) => normalizeName(p.name) === normalizeName(candidate));
 
   const handleCreateGroup = async (name, groupName) => {
+    if (!authUid) return { error: "Aguardando autenticação segura. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const code = genCode();
     const firstPlayer = { id: genId(), name: trimmedName, emblemId: "" };
@@ -2867,6 +3070,8 @@ export default function App() {
       },
       players: [firstPlayer],
       matches: [],
+      memberUids: [authUid],
+      adminUids: [authUid],
       messages: [],
       schedules: [],
       activeLeague: null,
@@ -2885,9 +3090,11 @@ export default function App() {
     lastSeenMessages.current = 0;
     setUnreadChat(0);
     setPhase("app");
+    return { ok: true };
   };
 
   const handleJoinGroup = async (name, code) => {
+    if (!authUid) return { error: "Aguardando autenticação segura. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const upper = code.trim().toUpperCase();
     const raw = await storageGet(`group:${upper}`, true);
@@ -2904,6 +3111,8 @@ export default function App() {
     );
 
     if (existingPlayer) {
+      data.memberUids = uniqueStringList([...(data.memberUids || []), authUid]);
+      await storageSet(`group:${upper}`, JSON.stringify(data), true);
       setMyName(existingPlayer.name);
       setMyPlayerId(existingPlayer.id || "");
       setGroupCode(upper);
@@ -2921,6 +3130,7 @@ export default function App() {
 
     const newPlayer = { id: genId(), name: trimmedName, emblemId: "" };
     data.players.push(newPlayer);
+    data.memberUids = uniqueStringList([...(data.memberUids || []), authUid]);
     await storageSet(`group:${upper}`, JSON.stringify(data), true);
     setMyName(trimmedName);
     setMyPlayerId(newPlayer.id);
@@ -3035,14 +3245,23 @@ export default function App() {
     const nextPlayers = (groupData?.players || []).filter(
       (p) => normalizeName(p.name) !== normalizeName(trimmed)
     );
+    const removedPlayerIds = new Set(
+      (groupData?.players || [])
+        .filter((player) => normalizeName(player.name) === normalizeName(trimmed))
+        .map((player) => player.id)
+    );
     const nextMatches = (groupData?.matches || []).filter(
       (m) => normalizeName(m.playerA) !== normalizeName(trimmed) && normalizeName(m.playerB) !== normalizeName(trimmed)
+    );
+    const nextAccounts = (groupData?.memberAccounts || []).filter(
+      (account) => !removedPlayerIds.has(account.playerId)
     );
 
     const data = {
       ...groupData,
       players: nextPlayers,
       matches: nextMatches,
+      memberAccounts: nextAccounts,
     };
 
     const ok = await saveGroup(data);
@@ -3053,19 +3272,57 @@ export default function App() {
   };
 
   const handleDeleteMatch = async (matchId) => {
+    if (!isAdmin) {
+      return { error: "Somente o administrador pode apagar resultados." };
+    }
     const confirmed = window.confirm("Tem certeza que deseja apagar esta partida?");
     if (!confirmed) return;
 
-    const nextMatches = (groupData?.matches || []).filter((m) => m.id !== matchId);
+    const currentMatches = groupData?.matches || [];
+    const matchToDelete = currentMatches.find((m) => m.id === matchId);
+    if (!matchToDelete) return { error: "Resultado não encontrado." };
+
+    const nextMatches = currentMatches.filter((m) => m.id !== matchId);
+    const deletedEntry = {
+      id: genId(),
+      match: matchToDelete,
+      deletedBy: myName || "Administrador",
+      deletedAt: Date.now(),
+    };
     const data = {
       ...groupData,
       matches: nextMatches,
+      deletedMatches: [...(groupData?.deletedMatches || []), deletedEntry],
     };
     const ok = await saveGroup(data);
     if (ok) pushToast({
       title: "Resultado apagado",
       body: "A classificação foi atualizada.",
     });
+    return ok ? { ok: true } : { error: "Nao foi possivel apagar o resultado." };
+  };
+
+  const handleRestoreDeletedMatch = async (deletedId) => {
+    if (!isAdmin) return { error: "Somente o administrador pode recuperar resultados." };
+
+    const trash = groupData?.deletedMatches || [];
+    const entry = trash.find((item) => item.id === deletedId);
+    if (!entry?.match) return { error: "Resultado nao encontrado na lixeira." };
+
+    const nextTrash = trash.filter((item) => item.id !== deletedId);
+    const data = {
+      ...groupData,
+      matches: [...(groupData?.matches || []), entry.match],
+      deletedMatches: nextTrash,
+    };
+    const ok = await saveGroup(data);
+    if (ok) {
+      pushToast({
+        title: "Resultado recuperado",
+        body: "O resultado voltou para a lista principal.",
+      });
+    }
+    return ok ? { ok: true } : { error: "Nao foi possivel recuperar o resultado." };
   };
 
   const handleSendMessage = async ({ text = "", mediaDataUrl = "", type = "text" }) => {
@@ -3701,7 +3958,12 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAd
         setBusy(false);
         return setError("Apenas o administrador pode criar grupos.");
       }
-      await onCreate(name.trim(), groupName.trim());
+      const res = await onCreate(name.trim(), groupName.trim());
+      if (res?.error) {
+        setError(res.error);
+        setBusy(false);
+        return;
+      }
     } else {
       if (!code.trim()) {
         setBusy(false);
@@ -4871,17 +5133,17 @@ function LogMatch({ players, matches, myName, onSubmit }) {
   };
 
   useEffect(() => {
-    if (!a && players.length) {
-      const mine = players.find((p) => p.name === myName);
-      setA(mine ? mine.name : players[0]?.name || "");
-    }
-  }, [players, myName, a]);
+    if (!myName) return;
+    if (a !== myName) setA(myName);
+  }, [myName, a]);
 
-  const options = players.map((p) => p.name);
+  const options = players
+    .map((p) => p.name)
+    .filter((name) => String(name || "").trim().toLowerCase() !== String(myName || "").trim().toLowerCase());
   const rankedPlayers = computeStats(players, matches).sort(
     (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.wins - a.wins || b.gf - a.gf
   );
-  const canSubmit = a && b && a !== b;
+  const canSubmit = myName && b && String(myName).trim().toLowerCase() !== String(b).trim().toLowerCase();
 
   const submit = async () => {
     if (!canSubmit || saving) return;
@@ -4975,8 +5237,13 @@ function LogMatch({ players, matches, myName, onSubmit }) {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              <PlayerSelect label="Jogador A" value={a} onChange={setA} options={options} />
-              <PlayerSelect label="Jogador B" value={b} onChange={setB} options={options} />
+              <div className="md-player-select min-w-0">
+                <label className="block text-sm font-oswald md-text-bone mb-1.5">Jogador logado</label>
+                <div className="md-input md-player-name-select w-full rounded-lg px-4 py-3 font-oswald opacity-80">
+                  {myName || "Usuário não identificado"}
+                </div>
+              </div>
+              <PlayerSelect label="Adversário" value={b} onChange={setB} options={options} />
             </div>
 
             <div className="flex items-center justify-center gap-6 md-bg-stadium rounded-xl py-6 md-border md-border-line">
@@ -5770,15 +6037,15 @@ function HeadToHead({ players, matches }) {
                       </div>
 
                       <div className="border-t border-white/10">
-                        {list.length > 0 ? (
+                        {list.length > 0 && (
                           <table className="min-w-full text-sm">
                             <thead className="md-bg-panel-dark-40">
                               <tr>
-                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DATA</th>
-                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">VENCEDOR</th>
-                                  <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-muted">PLACAR</th>
-                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DERROTADO</th>
-                                </tr>
+                                <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DATA</th>
+                                <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">VENCEDOR</th>
+                                <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-muted">PLACAR</th>
+                                <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DERROTADO</th>
+                              </tr>
                             </thead>
                             <tbody>
                               {[...list].reverse().map((m) => {
@@ -5798,7 +6065,8 @@ function HeadToHead({ players, matches }) {
                               })}
                             </tbody>
                           </table>
-                        ) : (
+                        )}
+                        {list.length === 0 && (
                           <p className="px-3 py-3 text-xs md-text-muted">Nenhum resultado registrado ainda para este confronto.</p>
                         )}
                       </div>

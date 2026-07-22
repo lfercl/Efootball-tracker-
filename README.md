@@ -5,6 +5,17 @@ Esta versão é uma web app responsiva/PWA e funciona no Chrome, Safari, iPhone 
 ## Grupos partilhados
 Os dados partilhados usam Firebase Firestore. O nome e o grupo atual do jogador ficam no próprio dispositivo.
 
+## Acesso ao grupo (novo fluxo)
+- O grupo continua com link de convite (`?group=CODIGO`).
+- Ao abrir o link, o utilizador cria o próprio `nome de utilizador` e `senha` na primeira entrada.
+- Nas próximas entradas, usa os mesmos dados para autenticar no grupo.
+- O primeiro utilizador registado no grupo vira administrador do grupo.
+
+## Regras de resultados
+- Somente administrador pode apagar resultados.
+- Resultado apagado vai para uma lixeira interna e pode ser recuperado pelo administrador.
+- Ao registar resultado, o jogador logado fica fixo; apenas o adversário é selecionável.
+
 ## Configuração
 1. Crie um projeto no Firebase.
 2. Ative o Firestore Database.
