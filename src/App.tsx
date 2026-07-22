@@ -2263,6 +2263,7 @@ export default function App() {
   const [authIsAdmin, setAuthIsAdmin] = useState(false);
   const [codeIsAdmin, setCodeIsAdmin] = useState(false);
   const [authUid, setAuthUid] = useState("");
+  const [authBootstrapped, setAuthBootstrapped] = useState(false);
   const [groupRoleAdmin, setGroupRoleAdmin] = useState(false);
   const [myAccountId, setMyAccountId] = useState("");
   const [myRole, setMyRole] = useState("member");
@@ -2308,7 +2309,25 @@ export default function App() {
       if (adminUnlock === "1") setCodeIsAdmin(true);
       if (code) {
         if (!authUid) {
-          setPhase("loading");
+          if (!authBootstrapped) {
+            setPhase("loading");
+            return;
+          }
+
+          setGroupCode(code);
+          const cached = readCachedGroup(code);
+          if (cached) {
+            setGroupData(cached);
+            lastSeenCount.current = cached.matches.length;
+            lastSeenMessages.current = cached.messages.length;
+            setUnreadChat(0);
+            setStorageOk(false);
+            setPhase("app");
+            return;
+          }
+
+          setStorageOk(false);
+          setPhase("join");
           return;
         }
         setGroupCode(code);
@@ -2381,7 +2400,7 @@ export default function App() {
       } catch {}
     })();
 
-  }, [authUid]);
+  }, [authUid, authBootstrapped]);
 
   useEffect(() => {
     if (!groupData?.players?.length) return;
@@ -2536,8 +2555,17 @@ export default function App() {
       }
       setAuthIsAdmin(user?.uid === ADMIN_UID);
       setAuthUid(String(user?.uid || ""));
+      setAuthBootstrapped(true);
     });
-    return unsubscribe;
+
+    const timeout = window.setTimeout(() => {
+      setAuthBootstrapped(true);
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(timeout);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
