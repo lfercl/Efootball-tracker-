@@ -799,7 +799,7 @@ const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 async function storageGet(key, shared) {
   try {
     if (!shared) return window.localStorage.getItem(key);
-    if (!db || !auth?.currentUser) return null;
+    if (!db) return null;
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
@@ -819,13 +819,14 @@ async function storageSet(key, value, shared) {
       window.localStorage.setItem(key, value);
       return true;
     }
-    if (!db || !auth?.currentUser) return false;
+    if (!db) return false;
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
     const now = Date.now();
     const keyStr = String(key || "");
     if (keyStr.startsWith("group:") && typeof value === "string") {
       const parsed = normalizeGroupData(JSON.parse(value));
-      const memberUids = uniqueStringList([...(parsed.memberUids || []), auth.currentUser.uid]);
+      const currentUid = String(auth?.currentUser?.uid || "");
+      const memberUids = uniqueStringList([...(parsed.memberUids || []), currentUid]);
       const adminUids = uniqueStringList(parsed.adminUids || []);
       await setDoc(
         ref,
@@ -3118,10 +3119,6 @@ export default function App() {
 
   const saveGroup = async (data) => {
     const effectiveUid = await ensureAuthUid();
-    if (!effectiveUid) {
-      setStorageOk(false);
-      return false;
-    }
     const normalized = normalizeGroupData(data);
     const memberUids = uniqueStringList([...(normalized.memberUids || []), effectiveUid]);
     const adminUids = uniqueStringList(normalized.adminUids || []);
@@ -3144,7 +3141,6 @@ export default function App() {
 
   const handleCreateGroup = async (name, groupName) => {
     const effectiveUid = await ensureAuthUid();
-    if (!effectiveUid) return { error: "Nao foi possivel autenticar agora. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const code = genCode();
     const firstPlayer = { id: genId(), name: trimmedName, emblemId: "" };
@@ -3160,8 +3156,8 @@ export default function App() {
       },
       players: [firstPlayer],
       matches: [],
-      memberUids: [effectiveUid],
-      adminUids: [effectiveUid],
+      memberUids: effectiveUid ? [effectiveUid] : [],
+      adminUids: effectiveUid ? [effectiveUid] : [],
       messages: [],
       schedules: [],
       activeLeague: null,
@@ -3185,7 +3181,6 @@ export default function App() {
 
   const handleJoinGroup = async (name, code) => {
     const effectiveUid = await ensureAuthUid();
-    if (!effectiveUid) return { error: "Nao foi possivel autenticar agora. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const upper = code.trim().toUpperCase();
     const raw = await storageGet(`group:${upper}`, true);
