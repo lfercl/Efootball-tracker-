@@ -1022,6 +1022,56 @@ function normalizeMemberAccount(account) {
   };
 }
 
+function stripMatchMedia(match) {
+  return {
+    ...match,
+    media: [],
+    votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
+  };
+}
+
+function normalizeBackupEntry(entry) {
+  const normalizedMatches = (entry?.matches || []).map((match) => stripMatchMedia(match));
+  const normalizedDeletedMatches = (entry?.deletedMatches || []).map((item) => ({
+    ...item,
+    deletedAt: Number(item?.deletedAt || Date.now()),
+    deletedBy: String(item?.deletedBy || "Administrador"),
+    match: stripMatchMedia(item?.match || {}),
+  }));
+
+  return {
+    id: String(entry?.id || genId()),
+    ts: Number(entry?.ts || Date.now()),
+    reason: String(entry?.reason || "snapshot"),
+    actor: String(entry?.actor || "Sistema"),
+    matches: normalizedMatches,
+    deletedMatches: normalizedDeletedMatches,
+    players: (entry?.players || []).map(normalizePlayer),
+  };
+}
+
+function appendBackupSnapshot(data, reason, actor) {
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) return data;
+  const entry = normalizeBackupEntry({
+    id: genId(),
+    ts: Date.now(),
+    reason: normalizedReason,
+    actor: String(actor || "Sistema"),
+    matches: (data?.matches || []).map((match) => stripMatchMedia(match)),
+    deletedMatches: (data?.deletedMatches || []).map((item) => ({
+      ...item,
+      match: stripMatchMedia(item?.match || {}),
+    })),
+    players: (data?.players || []).map(normalizePlayer),
+  });
+  const current = Array.isArray(data?.backups) ? data.backups : [];
+  return {
+    ...data,
+    backups: [entry, ...current].slice(0, 12),
+  };
+}
+
 function normalizeGroupData(data) {
   const normalizedPlaylistId = typeof data?.fmaPlaylistId === "string" ? data.fmaPlaylistId : "";
   const normalizedMessages = (data?.messages || []).map((message) => {
@@ -1067,6 +1117,10 @@ function normalizeGroupData(data) {
 
   const normalizedMemberUids = uniqueStringList(data?.memberUids || []);
   const normalizedAdminUids = uniqueStringList(data?.adminUids || []);
+  const normalizedBackups = (data?.backups || [])
+    .map(normalizeBackupEntry)
+    .sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0))
+    .slice(0, 12);
 
   return {
     ...data,
@@ -1078,6 +1132,7 @@ function normalizeGroupData(data) {
     memberAccounts: normalizedMemberAccounts,
     memberUids: normalizedMemberUids,
     adminUids: normalizedAdminUids,
+    backups: normalizedBackups,
     messages: normalizedMessages,
     schedules: Array.isArray(data?.schedules) ? data.schedules : [],
     activeLeague:
@@ -2335,7 +2390,11 @@ export default function App() {
   const presencePlayersRef = useRef([]);
   const presenceRefreshRef = useRef(null);
   const myNameRef = useRef(myName);
-  const isGroupAdmin = myRole === "admin" || groupRoleAdmin;
+  const adminFallbackByCreator =
+    (!Array.isArray(groupData?.memberAccounts) || groupData.memberAccounts.length === 0)
+    && String(groupData?.players?.[0]?.name || "").trim().toLowerCase()
+      === String(myName || "").trim().toLowerCase();
+  const isGroupAdmin = myRole === "admin" || groupRoleAdmin || adminFallbackByCreator;
   const isAdmin = authIsAdmin || codeIsAdmin || isGroupAdmin;
 
   useEffect(() => {
@@ -3117,7 +3176,7 @@ export default function App() {
     }
   };
 
-  const saveGroup = async (data) => {
+  const saveGroup = async (data, options: { backupReason?: string; backupActor?: string } = {}) => {
     const effectiveUid = await ensureAuthUid();
     const normalized = normalizeGroupData(data);
     const memberUids = uniqueStringList([...(normalized.memberUids || []), effectiveUid]);
@@ -3127,9 +3186,14 @@ export default function App() {
       memberUids,
       adminUids,
     };
-    setGroupData(securedData);
-    cacheGroupLocally(groupCode, securedData);
-    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(securedData), true);
+    const withBackup = appendBackupSnapshot(
+      securedData,
+      options?.backupReason,
+      options?.backupActor || myName || "Sistema"
+    );
+    setGroupData(withBackup);
+    cacheGroupLocally(groupCode, withBackup);
+    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(withBackup), true);
     setStorageOk(Boolean(persisted));
     return Boolean(persisted);
   };
@@ -3244,7 +3308,7 @@ export default function App() {
       ...groupData,
       players: [...(groupData?.players || []), { id: genId(), name: trimmed, emblemId: "" }],
     };
-    const ok = await saveGroup(data);
+    const ok = await saveGroup(data, { backupReason: "delete-match", backupActor: myName });
     if (!ok) return { error: "Não foi possível adicionar o jogador agora." };
     pushToast({
       title: "Jogador adicionado",
@@ -3350,7 +3414,7 @@ export default function App() {
       memberAccounts: nextAccounts,
     };
 
-    const ok = await saveGroup(data);
+    const ok = await saveGroup(data, { backupReason: "edit-match", backupActor: myName });
     if (ok) pushToast({
       title: "Jogador removido",
       body: `${trimmed} foi removido do grupo.`,
@@ -3401,7 +3465,7 @@ export default function App() {
       matches: [...(groupData?.matches || []), entry.match],
       deletedMatches: nextTrash,
     };
-    const ok = await saveGroup(data);
+    const ok = await saveGroup(data, { backupReason: "restore-deleted-match", backupActor: myName });
     if (ok) {
       pushToast({
         title: "Resultado recuperado",
@@ -3409,6 +3473,57 @@ export default function App() {
       });
     }
     return ok ? { ok: true } : { error: "Nao foi possivel recuperar o resultado." };
+  };
+
+  const handleCreateBackup = async () => {
+    if (!isAdmin) return { error: "Somente o administrador pode criar backup." };
+    if (!groupData) return { error: "Grupo nao carregado." };
+    const ok = await saveGroup(groupData, { backupReason: "manual-backup", backupActor: myName });
+    if (ok) {
+      pushToast({
+        title: "Backup criado",
+        body: "Snapshot do grupo guardado com sucesso.",
+      });
+      return { ok: true };
+    }
+    return { error: "Nao foi possivel criar backup agora." };
+  };
+
+  const handleRestoreBackup = async (backupId) => {
+    if (!isAdmin) return { error: "Somente o administrador pode restaurar backup." };
+    const backup = (groupData?.backups || []).find((item) => item.id === backupId);
+    if (!backup) return { error: "Backup nao encontrado." };
+
+    const confirmed = window.confirm("Restaurar este backup vai substituir jogadores e resultados atuais. Continuar?");
+    if (!confirmed) return { error: "Operacao cancelada." };
+
+    const data = {
+      ...groupData,
+      players: (backup.players || []).map(normalizePlayer),
+      matches: (backup.matches || []).map((match) => ({
+        ...match,
+        media: Array.isArray(match?.media) ? match.media : [],
+        votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
+      })),
+      deletedMatches: (backup.deletedMatches || []).map((item) => ({
+        ...item,
+        match: {
+          ...(item?.match || {}),
+          media: Array.isArray(item?.match?.media) ? item.match.media : [],
+          votes: item?.match?.votes && typeof item.match.votes === "object" ? item.match.votes : {},
+        },
+      })),
+    };
+
+    const ok = await saveGroup(data, { backupReason: "restore-backup", backupActor: myName });
+    if (ok) {
+      pushToast({
+        title: "Backup restaurado",
+        body: "Jogadores e resultados foram restaurados.",
+      });
+      return { ok: true };
+    }
+    return { error: "Nao foi possivel restaurar o backup." };
   };
 
   const handleSendMessage = async ({ text = "", mediaDataUrl = "", type = "text" }) => {
@@ -3931,13 +4046,13 @@ export default function App() {
 
                     const withPhotoData = { ...groupData, matches: [...groupData.matches, entryWithPhoto] };
                     lastSeenCount.current = withPhotoData.matches.length;
-                    let ok = await saveGroup(withPhotoData);
+                    let ok = await saveGroup(withPhotoData, { backupReason: "register-match", backupActor: myName });
 
                     if (!ok && preparedPhoto) {
                       const fallbackEntry = { ...baseEntry, media: [] };
                       const fallbackData = { ...groupData, matches: [...groupData.matches, fallbackEntry] };
                       lastSeenCount.current = fallbackData.matches.length;
-                      ok = await saveGroup(fallbackData);
+                      ok = await saveGroup(fallbackData, { backupReason: "register-match", backupActor: myName });
                       if (ok) {
                         pushToast({
                           title: "Resultado registado sem foto",
@@ -3979,10 +4094,16 @@ export default function App() {
               <ResultsManagement
                 players={groupData?.players || []}
                 matches={groupData?.matches || []}
+                deletedMatches={groupData?.deletedMatches || []}
+                backups={groupData?.backups || []}
+                isAdmin={isAdmin}
                 onDeleteMatch={handleDeleteMatch}
+                onRestoreDeletedMatch={handleRestoreDeletedMatch}
                 onEditMatch={handleEditMatch}
                 onVoteMvp={handleVoteMvp}
                 onAddMedia={handleAddMediaToMatch}
+                onCreateBackup={handleCreateBackup}
+                onRestoreBackup={handleRestoreBackup}
               />
             )}
             {tab === "competition" && (
@@ -4750,7 +4871,20 @@ function ResultPhotoLightbox({ src, onClose }) {
   );
 }
 
-function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVoteMvp, onAddMedia }) {
+function ResultsManagement({
+  players,
+  matches,
+  deletedMatches,
+  backups,
+  isAdmin,
+  onDeleteMatch,
+  onRestoreDeletedMatch,
+  onEditMatch,
+  onVoteMvp,
+  onAddMedia,
+  onCreateBackup,
+  onRestoreBackup,
+}) {
   const [editingId, setEditingId] = useState(null);
   const [playerA, setPlayerA] = useState("");
   const [playerB, setPlayerB] = useState("");
@@ -4974,10 +5108,95 @@ function ResultsManagement({ players, matches, onDeleteMatch, onEditMatch, onVot
                     <button onClick={() => shareMatch(match)} className="md-step-btn rounded-lg py-2 text-xs font-oswald flex items-center justify-center gap-1 md-touch-target">
                       <Share2 size={12} /> PARTILHAR
                     </button>
-                    <button onClick={() => onDeleteMatch(match.id)} className="md-step-btn-danger rounded-lg py-2 text-xs font-oswald md-touch-target">APAGAR</button>
+                    <button
+                      onClick={async () => {
+                        const res = await onDeleteMatch(match.id);
+                        if (res?.error) window.alert(res.error);
+                      }}
+                      disabled={!isAdmin}
+                      className="md-step-btn-danger rounded-lg py-2 text-xs font-oswald md-touch-target disabled:opacity-50"
+                    >
+                      APAGAR
+                    </button>
                   </div>
                 </>
               )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">LIXEIRA DE RESULTADOS</h3>
+        {(deletedMatches || []).length === 0 && (
+          <p className="md-text-muted text-sm">Nenhum resultado apagado.</p>
+        )}
+        <div className="space-y-2">
+          {[...(deletedMatches || [])].reverse().map((entry) => (
+            <div key={entry.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
+              <p className="font-oswald text-sm md-text-bone">
+                {entry?.match?.playerA || "?"} {Number(entry?.match?.scoreA || 0)}-{Number(entry?.match?.scoreB || 0)} {entry?.match?.playerB || "?"}
+              </p>
+              <p className="text-xs md-text-muted">
+                Apagado por {entry?.deletedBy || "Administrador"} em {new Date(Number(entry?.deletedAt || Date.now())).toLocaleString("pt-BR")}
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await onRestoreDeletedMatch(entry.id);
+                  if (res?.error) window.alert(res.error);
+                }}
+                disabled={!isAdmin}
+                className="md-btn-amber rounded-lg px-3 py-2 text-xs font-oswald disabled:opacity-50"
+              >
+                RECUPERAR RESULTADO
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="font-oswald text-sm tracking-wide md-text-muted">BACKUPS AUTOMÁTICOS</h3>
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await onCreateBackup();
+              if (res?.error) window.alert(res.error);
+            }}
+            disabled={!isAdmin}
+            className="md-btn-amber rounded-lg px-3 py-2 text-xs font-oswald disabled:opacity-50"
+          >
+            CRIAR BACKUP
+          </button>
+        </div>
+        {(backups || []).length === 0 && (
+          <p className="md-text-muted text-sm">Sem backups ainda.</p>
+        )}
+        <div className="space-y-2">
+          {(backups || []).map((backup) => (
+            <div key={backup.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
+              <p className="font-oswald text-sm md-text-bone">
+                {String(backup.reason || "snapshot").toUpperCase()}
+              </p>
+              <p className="text-xs md-text-muted">
+                {new Date(Number(backup.ts || Date.now())).toLocaleString("pt-BR")} • {backup.actor || "Sistema"}
+              </p>
+              <p className="text-xs md-text-muted">
+                {Number(backup?.matches?.length || 0)} resultados • {Number(backup?.players?.length || 0)} jogadores
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await onRestoreBackup(backup.id);
+                  if (res?.error) window.alert(res.error);
+                }}
+                disabled={!isAdmin}
+                className="md-step-btn rounded-lg px-3 py-2 text-xs font-oswald disabled:opacity-50"
+              >
+                RESTAURAR BACKUP
+              </button>
             </div>
           ))}
         </div>
