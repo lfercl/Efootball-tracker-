@@ -734,6 +734,52 @@ async function hashGroupPassword(password, salt) {
   return sha256Hex(`${String(salt || "")}:${String(password || "")}`);
 }
 
+function estimateJsonSize(value) {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+async function shrinkImageDataUrl(dataUrl, maxChars = 120 * 1024) {
+  const input = String(dataUrl || "");
+  if (!input.startsWith("data:image/")) return input;
+  if (input.length <= maxChars) return input;
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Falha ao processar imagem"));
+    img.src = input;
+  });
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return input;
+
+  const scales = [1, 0.85, 0.72, 0.6, 0.5, 0.4, 0.32, 0.26];
+  const qualities = [0.78, 0.66, 0.55, 0.46, 0.38, 0.3, 0.24];
+  let best = input;
+
+  for (const scale of scales) {
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    canvas.width = width;
+    canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+
+    for (const quality of qualities) {
+      const candidate = canvas.toDataURL("image/jpeg", quality);
+      if (candidate.length < best.length) best = candidate;
+      if (candidate.length <= maxChars) return candidate;
+    }
+  }
+
+  return best;
+}
+
 function uniqueStringList(values) {
   return Array.from(
     new Set(
@@ -3840,22 +3886,57 @@ export default function App() {
                       [playerA, playerB] = [playerB, playerA];
                       [scoreA, scoreB] = [scoreB, scoreA];
                     }
-                    const entry = {
+                    const baseEntry = {
                       id: genId(),
                       playerA,
                       playerB,
                       scoreA,
                       scoreB,
-                      media: photoDataUrl ? [photoDataUrl] : [],
+                      media: [],
                       votes: {},
                       recordedBy: myName,
                       ts: Date.now(),
                     };
-                    const data = { ...groupData, matches: [...groupData.matches, entry] };
-                    lastSeenCount.current = data.matches.length;
-                    const ok = await saveGroup(data);
+                    let preparedPhoto = "";
+                    if (photoDataUrl) {
+                      const emptyPhotoPayload = estimateJsonSize({
+                        ...groupData,
+                        matches: [...groupData.matches, baseEntry],
+                      });
+                      const remainingBudget = Math.max(48 * 1024, 920 * 1024 - emptyPhotoPayload);
+                      const targetChars = Math.min(140 * 1024, remainingBudget);
+                      try {
+                        preparedPhoto = await shrinkImageDataUrl(photoDataUrl, targetChars);
+                      } catch {
+                        preparedPhoto = "";
+                      }
+                    }
+
+                    const entryWithPhoto = {
+                      ...baseEntry,
+                      media: preparedPhoto ? [preparedPhoto] : [],
+                    };
+
+                    const withPhotoData = { ...groupData, matches: [...groupData.matches, entryWithPhoto] };
+                    lastSeenCount.current = withPhotoData.matches.length;
+                    let ok = await saveGroup(withPhotoData);
+
+                    if (!ok && preparedPhoto) {
+                      const fallbackEntry = { ...baseEntry, media: [] };
+                      const fallbackData = { ...groupData, matches: [...groupData.matches, fallbackEntry] };
+                      lastSeenCount.current = fallbackData.matches.length;
+                      ok = await saveGroup(fallbackData);
+                      if (ok) {
+                        pushToast({
+                          title: "Resultado registado sem foto",
+                          body: "A imagem estava grande para sincronizar. O placar foi salvo.",
+                        });
+                        return { ok: true };
+                      }
+                    }
+
                     if (!ok) {
-                      return { error: "Nao foi possivel salvar a partida com foto. Tente novamente com uma imagem menor." };
+                      return { error: "Nao foi possivel salvar a partida agora. Tente novamente com uma imagem menor." };
                     }
                     pushToast({
                       title: "Resultado registado",
