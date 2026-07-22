@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 interface ImportMetaEnv {
@@ -12,10 +13,23 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
+  readonly VITE_FIREBASE_VAPID_KEY?: string;
 }
 
 // Color settings panel (placed at module end so it can use helpers)
-function ColorSettings({ open, onClose, initialSection = "visual", myName = "", myEmblemId = "", onSaveMyEmblem, onNotify }) {
+function ColorSettings({
+  open,
+  onClose,
+  initialSection = "visual",
+  myName = "",
+  myEmblemId = "",
+  onSaveMyEmblem,
+  onNotify,
+  notificationState = "checking",
+  notificationBusy = false,
+  onEnableNotifications,
+  onDisableNotifications,
+}) {
   const [vals, setVals] = useState({
     "md-bg-stadium": "#071A14",
     "md-bg-panel": "#0F3D2A",
@@ -124,7 +138,7 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
   useEffect(() => {
     setSelectedEmblem(myEmblemId || "");
     if (open) {
-      setActiveSection("visual");
+      setActiveSection(initialSection || "visual");
     }
   }, [myEmblemId, open, initialSection]);
 
@@ -215,12 +229,14 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
         <div className="md-settings-header flex items-center justify-between mb-3">
           <h3 id="settings-title" className="font-oswald text-2xl md-text-bone">Configurações</h3>
           <div className="md-settings-actions flex gap-2">
-            <button type="button" onClick={reset} className="md-step-btn px-4 py-2 rounded-md text-sm">Reset</button>
+            {activeSection === "visual" && (
+              <button type="button" onClick={reset} className="md-step-btn px-4 py-2 rounded-md text-sm">Reset</button>
+            )}
             <button type="button" onClick={onClose} className="md-step-btn px-4 py-2 rounded-md text-sm">Fechar</button>
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-2">
+        <div className="mb-4 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setActiveSection("visual")}
@@ -228,7 +244,82 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
           >
             VISUAL
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection("notifications")}
+            className={`md-step-btn px-4 py-2 rounded-md text-sm ${activeSection === "notifications" ? "md-bg-amber md-text-bone" : ""}`}
+          >
+            NOTIFICAÇÕES
+          </button>
         </div>
+
+        {activeSection === "notifications" && (
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="flex items-start gap-3">
+              <span className="rounded-full md-bg-amber p-3 md-text-bone"><Bell size={22} /></span>
+              <div className="min-w-0 flex-1">
+                <p className="font-oswald text-xl md-text-bone">Notificações no telemóvel</p>
+                <p className="mt-1 text-sm md-text-muted">
+                  Receba avisos de novas mensagens e resultados mesmo quando a app estiver fechada.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+              <p className="text-sm md-text-bone">
+                Estado:{" "}
+                <strong>
+                  {notificationState === "active" && "Ativadas"}
+                  {notificationState === "inactive" && "Desativadas"}
+                  {notificationState === "blocked" && (IS_NATIVE_APP ? "Bloqueadas no telemóvel" : "Bloqueadas no navegador")}
+                  {notificationState === "unsupported" && (IS_NATIVE_APP ? "Não suportadas neste telemóvel" : "Não suportadas neste navegador")}
+                  {notificationState === "error" && "Erro ao configurar"}
+                  {notificationState === "checking" && "A verificar…"}
+                </strong>
+              </p>
+              {notificationState === "blocked" && (
+                <p className="mt-2 text-xs md-text-muted">
+                  {IS_NATIVE_APP
+                    ? "Abra as definições de notificações do telemóvel, permita avisos e volte a tentar."
+                    : "Abra as permissões deste site no navegador, permita notificações e volte a tentar."}
+                </p>
+              )}
+              {notificationState === "unsupported" && (
+                <p className="mt-2 text-xs md-text-muted">
+                  {IS_NATIVE_APP
+                    ? "Verifique se esta instalação Android suporta Google Play Services e push notifications."
+                    : "Use um navegador compatível e, no iPhone, instale primeiro a app no ecrã principal."}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {notificationState !== "active" ? (
+                <button
+                  type="button"
+                  onClick={onEnableNotifications}
+                  disabled={notificationBusy || notificationState === "unsupported" || notificationState === "blocked"}
+                  className="md-btn-amber rounded-lg px-5 py-3 font-oswald text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {notificationBusy ? "A ATIVAR…" : "ATIVAR NOTIFICAÇÕES"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onDisableNotifications}
+                  disabled={notificationBusy}
+                  className="md-step-btn rounded-lg px-5 py-3 font-oswald text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {notificationBusy ? "A DESATIVAR…" : "DESATIVAR"}
+                </button>
+              )}
+            </div>
+
+            <p className="mt-3 text-xs md-text-muted">
+              Ao tocar num aviso de resultado abre diretamente Resultados; avisos do chat abrem a conversa.
+            </p>
+          </div>
+        )}
 
         {activeSection === "visual" && (
         <div className="mb-4 rounded-lg border border-white/10 bg-black/15 p-3">
@@ -278,9 +369,11 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
         </div>
         )}
 
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={save} className="md-btn-amber px-6 py-3 rounded-md text-sm">Salvar</button>
-        </div>
+        {activeSection === "visual" && (
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={save} className="md-btn-amber px-6 py-3 rounded-md text-sm">Salvar</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -290,8 +383,9 @@ function ColorSettings({ open, onClose, initialSection = "visual", myName = "", 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
-import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
+import { deleteToken, getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import {
   Trophy,
   Swords,
@@ -568,8 +662,6 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID,
 };
 
-console.log("API KEY LIDA:", firebaseConfig.apiKey);
-
 const firebaseReady = Boolean(
   firebaseConfig.apiKey &&
   firebaseConfig.projectId &&
@@ -588,6 +680,70 @@ const auth = firebaseApp
   ? getAuth(firebaseApp)
   : null;
 
+const PUSH_ENABLED_KEY = "push-notifications-enabled";
+const PUSH_DOC_KEY = "push-notifications-document";
+const PUSH_GROUP_KEY = "push-notifications-group";
+const IS_NATIVE_APP = Capacitor.isNativePlatform();
+const HAS_NATIVE_PUSH = Capacitor.isPluginAvailable("PushNotifications");
+const PUSH_TABS = new Set(["log", "chat", "results", "competition", "standings", "h2h", "agenda"]);
+
+function getRequestedPushTab() {
+  if (typeof window === "undefined") return "log";
+  const requested = new URLSearchParams(window.location.search).get("tab") || "";
+  return PUSH_TABS.has(requested) ? requested : "log";
+}
+
+function getMessagingServiceWorkerInfo() {
+  const baseUrl = new URL(env.BASE_URL || "./", window.location.href);
+  const workerUrl = new URL("firebase-messaging-sw.js", baseUrl);
+  Object.entries(firebaseConfig).forEach(([key, value]) => {
+    if (value) workerUrl.searchParams.set(key, String(value));
+  });
+  return { workerUrl, scope: baseUrl.pathname };
+}
+
+async function hashPushToken(token) {
+  const encoded = new TextEncoder().encode(token);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function normalizeUsername(value) {
+  return String(value || "").trim().toLocaleLowerCase("pt-PT");
+}
+
+function createPasswordSalt() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sha256Hex(value) {
+  const encoded = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashGroupPassword(password, salt) {
+  return sha256Hex(`${String(salt || "")}:${String(password || "")}`);
+}
+
+function uniqueStringList(values) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
 const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 
 /* ---------------- storage helpers (defensive: shared storage on
@@ -597,10 +753,15 @@ const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
 async function storageGet(key, shared) {
   try {
     if (!shared) return window.localStorage.getItem(key);
-    if (!db) return null;
+    if (!db || !auth?.currentUser) return null;
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
     const snap = await getDoc(ref);
-    return snap.exists() ? snap.data().value ?? null : null;
+    if (!snap.exists()) return null;
+    const storedValue = snap.data().value ?? null;
+    if (String(key || "").startsWith("group:") && storedValue && typeof storedValue === "object") {
+      return JSON.stringify(storedValue);
+    }
+    return storedValue;
   } catch (e) {
     console.error("storageGet", e);
     return null;
@@ -612,9 +773,32 @@ async function storageSet(key, value, shared) {
       window.localStorage.setItem(key, value);
       return true;
     }
-    if (!db) return false;
+    if (!db || !auth?.currentUser) return false;
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
-    await setDoc(ref, { value, updatedAt: Date.now() }, { merge: true });
+    const now = Date.now();
+    const keyStr = String(key || "");
+    if (keyStr.startsWith("group:") && typeof value === "string") {
+      const parsed = normalizeGroupData(JSON.parse(value));
+      const memberUids = uniqueStringList([...(parsed.memberUids || []), auth.currentUser.uid]);
+      const adminUids = uniqueStringList(parsed.adminUids || []);
+      await setDoc(
+        ref,
+        {
+          value: {
+            ...parsed,
+            memberUids,
+            adminUids,
+          },
+          updatedAt: now,
+          groupCode: keyStr.slice("group:".length).toUpperCase(),
+          memberUids,
+          adminUids,
+        },
+        { merge: true }
+      );
+      return true;
+    }
+    await setDoc(ref, { value, updatedAt: now }, { merge: true });
     return true;
   } catch (e) {
     console.error("storageSet", e);
@@ -757,10 +941,37 @@ function normalizeFmaPlayback(playback, playlistId) {
   };
 }
 
+function getStablePlayerId(player) {
+  const explicitId = String(player?.id || "").trim();
+  if (explicitId) return explicitId;
+  const byName = String(player?.name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return byName ? `legacy-${byName}` : genId();
+}
+
 function normalizePlayer(player) {
   return {
     ...player,
+    id: getStablePlayerId(player),
     emblemId: typeof player?.emblemId === "string" ? player.emblemId : "",
+  };
+}
+
+function normalizeMemberAccount(account) {
+  return {
+    id: String(account?.id || genId()),
+    username: String(account?.username || "").trim(),
+    usernameNorm: normalizeUsername(account?.usernameNorm || account?.username),
+    playerId: String(account?.playerId || "").trim(),
+    role: String(account?.role || "member") === "admin" ? "admin" : "member",
+    passwordHash: String(account?.passwordHash || "").trim(),
+    passwordSalt: String(account?.passwordSalt || "").trim(),
+    createdAt: Number(account?.createdAt || Date.now()),
   };
 }
 
@@ -792,12 +1003,34 @@ function normalizeGroupData(data) {
     votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
   }));
 
+  const normalizedDeletedMatches = (data?.deletedMatches || []).map((entry) => ({
+    ...entry,
+    deletedAt: Number(entry?.deletedAt || Date.now()),
+    deletedBy: String(entry?.deletedBy || "Administrador"),
+    match: {
+      ...(entry?.match || {}),
+      media: Array.isArray(entry?.match?.media) ? entry.match.media : [],
+      votes: entry?.match?.votes && typeof entry.match.votes === "object" ? entry.match.votes : {},
+    },
+  }));
+
+  const normalizedMemberAccounts = (data?.memberAccounts || [])
+    .map(normalizeMemberAccount)
+    .filter((account) => account.usernameNorm && account.passwordHash && account.passwordSalt);
+
+  const normalizedMemberUids = uniqueStringList(data?.memberUids || []);
+  const normalizedAdminUids = uniqueStringList(data?.adminUids || []);
+
   return {
     ...data,
     fmaPlaylistId: normalizedPlaylistId,
     fmaPlayback: normalizeFmaPlayback(data?.fmaPlayback, normalizedPlaylistId),
     players: (data?.players || []).map(normalizePlayer),
     matches: normalizedMatches,
+    deletedMatches: normalizedDeletedMatches,
+    memberAccounts: normalizedMemberAccounts,
+    memberUids: normalizedMemberUids,
+    adminUids: normalizedAdminUids,
     messages: normalizedMessages,
     schedules: Array.isArray(data?.schedules) ? data.schedules : [],
     activeLeague:
@@ -1466,6 +1699,18 @@ function NameWithEmblem({ name, emblemId, size = 32, textClassName = "", classNa
   );
 }
 
+function PresenceBadge({ online, className = "" }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-oswald tracking-wide border ${
+        online ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-200" : "border-white/15 bg-black/15 text-white/70"
+      } ${className}`}
+    >
+      {online ? "ON-LINE" : "OFF-LINE"}
+    </span>
+  );
+}
+
 function buildInviteLink(code) {
   if (!code || typeof window === "undefined") return "";
   const url = new URL(window.location.href);
@@ -1475,6 +1720,10 @@ function buildInviteLink(code) {
 
 function getGroupCacheKey(code) {
   return `group-cache:${String(code || "").toUpperCase()}`;
+}
+
+function getPresenceDocKey(groupCode, playerId) {
+  return `presence:${String(groupCode || "").toUpperCase()}:${String(playerId || "").trim()}`;
 }
 
 function cacheGroupLocally(code, data) {
@@ -1493,6 +1742,24 @@ function readCachedGroup(code) {
   } catch {
     return null;
   }
+}
+
+function getPresenceSnapshot(rawValue) {
+  try {
+    if (!rawValue) return {};
+    const parsed = typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isPresenceOnline(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.status !== "online") return false;
+  const lastSeenAt = Number(entry.lastSeenAt || 0);
+  if (!lastSeenAt) return false;
+  return Date.now() - lastSeenAt < 30000;
 }
 
 function hasMeaningfulGroupChange(prev, next) {
@@ -1983,15 +2250,22 @@ export default function App() {
   const [myPlayerId, setMyPlayerId] = useState("");
   const [groupCode, setGroupCode] = useState("");
   const [groupData, setGroupData] = useState(null); // { name, players:[{id,name}], matches:[...] }
-  const [tab, setTab] = useState("log");
+  const [tab, setTab] = useState(getRequestedPushTab);
   const [toasts, setToasts] = useState([]);
+  const [notificationState, setNotificationState] = useState("checking");
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const [unread, setUnread] = useState(0);
   const [unreadChat, setUnreadChat] = useState(0);
   const [feedOpen, setFeedOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState("visual");
+  const [presenceMap, setPresenceMap] = useState({});
   const [authIsAdmin, setAuthIsAdmin] = useState(false);
   const [codeIsAdmin, setCodeIsAdmin] = useState(false);
+  const [authUid, setAuthUid] = useState("");
+  const [groupRoleAdmin, setGroupRoleAdmin] = useState(false);
+  const [myAccountId, setMyAccountId] = useState("");
+  const [myRole, setMyRole] = useState("member");
   const [headerHidden, setHeaderHidden] = useState(false);
   const reminderSentRef = useRef<Record<string, boolean>>({});
   const touchStartXRef = useRef(0);
@@ -2004,21 +2278,55 @@ export default function App() {
   const pollRef = useRef(null);
   const lastScrollYRef = useRef(0);
   const finalizingLeagueRef = useRef(false);
-  const isAdmin = authIsAdmin || codeIsAdmin;
+  const pushSetupRef = useRef(false);
+  const nativePushTokenRef = useRef("");
+  const nativePushWaiterRef = useRef<null | { resolve: (token: string) => void; reject: (error: Error) => void }>(null);
+  const tabRef = useRef(tab);
+  const presenceHeartbeatRef = useRef(0);
+  const presenceEntryRef = useRef({});
+  const presencePlayersRef = useRef([]);
+  const presenceRefreshRef = useRef(null);
+  const myNameRef = useRef(myName);
+  const isGroupAdmin = myRole === "admin" || groupRoleAdmin;
+  const isAdmin = authIsAdmin || codeIsAdmin || isGroupAdmin;
+
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
 
   useEffect(() => {
     (async () => {
       const name = await storageGet("my-name", false);
       const playerId = await storageGet("my-player-id", false);
       const code = await storageGet("my-group", false);
+      const accountId = await storageGet("my-account-id", false);
+      const accountSecret = await storageGet("my-account-secret", false);
       const adminUnlock = await storageGet("admin-code-unlocked", false);
       if (name) setMyName(name);
       if (playerId) setMyPlayerId(playerId);
+      if (accountId) setMyAccountId(accountId);
       if (adminUnlock === "1") setCodeIsAdmin(true);
       if (code) {
+        if (!authUid) {
+          setPhase("loading");
+          return;
+        }
         setGroupCode(code);
         const cached = readCachedGroup(code);
         if (cached) {
+          const hasAccounts = Array.isArray(cached.memberAccounts) && cached.memberAccounts.length > 0;
+          if (hasAccounts) {
+            const account = cached.memberAccounts.find((entry) => entry.id === accountId);
+            if (!account || !accountSecret || account.passwordHash !== accountSecret) {
+              setStorageOk(true);
+              setPhase("join");
+              return;
+            }
+            const linkedPlayer = (cached.players || []).find((player) => player.id === account.playerId);
+            if (linkedPlayer?.name) setMyName(linkedPlayer.name);
+            if (linkedPlayer?.id) setMyPlayerId(linkedPlayer.id);
+            setMyRole(account.role === "admin" ? "admin" : "member");
+          }
           setGroupData(cached);
           lastSeenCount.current = cached.matches.length;
           lastSeenMessages.current = cached.messages.length;
@@ -2030,6 +2338,19 @@ export default function App() {
         if (data) {
           try {
             const parsed = normalizeGroupData(JSON.parse(data));
+            const hasAccounts = Array.isArray(parsed.memberAccounts) && parsed.memberAccounts.length > 0;
+            if (hasAccounts) {
+              const account = parsed.memberAccounts.find((entry) => entry.id === accountId);
+              if (!account || !accountSecret || account.passwordHash !== accountSecret) {
+                setStorageOk(true);
+                setPhase("join");
+                return;
+              }
+              const linkedPlayer = (parsed.players || []).find((player) => player.id === account.playerId);
+              if (linkedPlayer?.name) setMyName(linkedPlayer.name);
+              if (linkedPlayer?.id) setMyPlayerId(linkedPlayer.id);
+              setMyRole(account.role === "admin" ? "admin" : "member");
+            }
             setGroupData(parsed);
             cacheGroupLocally(code, parsed);
             lastSeenCount.current = parsed.matches.length;
@@ -2060,7 +2381,7 @@ export default function App() {
       } catch {}
     })();
 
-  }, []);
+  }, [authUid]);
 
   useEffect(() => {
     if (!groupData?.players?.length) return;
@@ -2076,12 +2397,153 @@ export default function App() {
   }, [groupData?.players, myName, myPlayerId]);
 
   useEffect(() => {
+    if (phase !== "app") return;
+    const accounts = groupData?.memberAccounts || [];
+    if (!accounts.length) return;
+
+    let cancelled = false;
+    (async () => {
+      const accountId = await storageGet("my-account-id", false);
+      const accountSecret = await storageGet("my-account-secret", false);
+      const account = accounts.find((entry) => entry.id === accountId);
+
+      if (!account || !accountSecret || account.passwordHash !== accountSecret) {
+        if (cancelled) return;
+        await storageSet("my-account-id", "", false);
+        await storageSet("my-account-secret", "", false);
+        setMyAccountId("");
+        setMyRole("member");
+        setPhase("join");
+        return;
+      }
+
+      const linkedPlayer = (groupData?.players || []).find((player) => player.id === account.playerId);
+      if (cancelled) return;
+
+      setMyAccountId(account.id);
+      setMyRole(account.role === "admin" ? "admin" : "member");
+      if (linkedPlayer?.id && linkedPlayer.id !== myPlayerId) {
+        setMyPlayerId(linkedPlayer.id);
+        storageSet("my-player-id", linkedPlayer.id, false);
+      }
+      if (linkedPlayer?.name && linkedPlayer.name !== myName) {
+        setMyName(linkedPlayer.name);
+        storageSet("my-name", linkedPlayer.name, false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, groupData?.memberAccounts, groupData?.players, myPlayerId, myName]);
+
+  useEffect(() => {
+    presencePlayersRef.current = groupData?.players || [];
+    if (presenceRefreshRef.current) {
+      void presenceRefreshRef.current();
+    }
+  }, [groupData?.players]);
+
+  useEffect(() => {
+    myNameRef.current = myName;
+  }, [myName]);
+
+  useEffect(() => {
+    presenceEntryRef.current = {};
+    setPresenceMap({});
+  }, [groupCode]);
+
+  useEffect(() => {
+    if (phase !== "app" || !groupCode || !myPlayerId) return;
+    let cancelled = false;
+
+    const refreshPresence = async () => {
+      const players = presencePlayersRef.current || [];
+      if (!players.length) return;
+
+      const entries = await Promise.all(
+        players.map(async (player) => {
+          if (!player?.id) return ["", null];
+          const raw = await storageGet(getPresenceDocKey(groupCode, player.id), true);
+          return [player.id, getPresenceSnapshot(raw)];
+        }),
+      );
+
+      if (cancelled) return;
+      const nextMap = Object.fromEntries(entries.filter(([id]) => Boolean(id)));
+      setPresenceMap(nextMap);
+    };
+
+    const writeOwnPresence = async (status) => {
+      if (!myPlayerId || !groupCode) return;
+      const entry = {
+        playerId: myPlayerId,
+        name: myNameRef.current || "",
+        status,
+        lastSeenAt: Date.now(),
+      };
+      presenceEntryRef.current = entry;
+      await storageSet(getPresenceDocKey(groupCode, myPlayerId), JSON.stringify(entry), true);
+    };
+
+    const heartbeat = async () => {
+      await writeOwnPresence(document.visibilityState === "visible" ? "online" : "offline");
+      await refreshPresence();
+    };
+
+    presenceRefreshRef.current = refreshPresence;
+
+    void heartbeat();
+    const timer = window.setInterval(() => {
+      if (Date.now() - presenceHeartbeatRef.current < 5000) return;
+      presenceHeartbeatRef.current = Date.now();
+      void heartbeat();
+    }, 12000);
+
+    const handleVisibilityChange = () => {
+      void writeOwnPresence(document.visibilityState === "visible" ? "online" : "offline");
+    };
+
+    const handleBeforeUnload = () => {
+      void writeOwnPresence("offline");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
+
+    return () => {
+      cancelled = true;
+      presenceRefreshRef.current = null;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+      void writeOwnPresence("offline");
+    };
+  }, [phase, groupCode, myPlayerId]);
+
+  useEffect(() => {
     if (!auth) return;
+    signInAnonymously(auth).catch((error) => {
+      console.error("Falha ao autenticar no Firebase.", error);
+    });
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        signInAnonymously(auth).catch((error) => {
+          console.error("Falha ao restabelecer autenticacao anonima.", error);
+        });
+      }
       setAuthIsAdmin(user?.uid === ADMIN_UID);
+      setAuthUid(String(user?.uid || ""));
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const adminUids = uniqueStringList(groupData?.adminUids || []);
+    setGroupRoleAdmin(Boolean(authUid && adminUids.includes(authUid)));
+  }, [groupData?.adminUids, authUid]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -2117,10 +2579,12 @@ export default function App() {
           const newOnes = parsed.matches.slice(lastSeenCount.current);
           newOnes.forEach((m) => {
             if (m.recordedBy !== myName) {
-              pushToast({
-                title: `${m.recordedBy} registrou uma partida`,
-                body: `${m.playerA} ${m.scoreA} x ${m.scoreB} ${m.playerB}`,
-              });
+              if (notificationState !== "active") {
+                pushToast({
+                  title: `${m.recordedBy} registrou uma partida`,
+                  body: `${m.playerA} ${m.scoreA} x ${m.scoreB} ${m.playerB}`,
+                });
+              }
               setUnread((u) => u + 1);
             }
           });
@@ -2142,7 +2606,7 @@ export default function App() {
       } catch {}
     }, 4000);
     return () => clearInterval(pollRef.current);
-  }, [phase, groupCode, myName, tab]);
+  }, [phase, groupCode, myName, tab, notificationState]);
 
   useEffect(() => {
     if (tab !== "chat") return;
@@ -2168,8 +2632,6 @@ export default function App() {
           new Notification("Matchday Ledger", {
             body: `${next.title || "Próximo jogo"} em ${mins} min`,
           });
-        } else if (Notification.permission !== "denied") {
-          Notification.requestPermission();
         }
       }
     }
@@ -2181,10 +2643,407 @@ export default function App() {
   };
   const closeToast = (id) => setToasts((cur) => cur.filter((t) => t.id !== id));
 
+  const removeStoredPushSubscription = async () => {
+    const storedDocId = window.localStorage.getItem(PUSH_DOC_KEY);
+    if (storedDocId && db) {
+      try {
+        await deleteDoc(doc(db, "pushTokens", storedDocId));
+      } catch (error) {
+        console.warn("Não foi possível remover o registo push remoto.", error);
+      }
+    }
+    window.localStorage.removeItem(PUSH_DOC_KEY);
+    window.localStorage.removeItem(PUSH_GROUP_KEY);
+  };
+
+  const upsertPushTokenRegistration = async (token: string, platform: "web" | "android") => {
+    if (!db) throw new Error("Firestore indisponível para guardar token push.");
+    const tokenDocumentId = await hashPushToken(token);
+    const previousDocumentId = window.localStorage.getItem(PUSH_DOC_KEY);
+
+    if (previousDocumentId && previousDocumentId !== tokenDocumentId) {
+      try {
+        await deleteDoc(doc(db, "pushTokens", previousDocumentId));
+      } catch {}
+    }
+
+    await setDoc(
+      doc(db, "pushTokens", tokenDocumentId),
+      {
+        token,
+        groupCode,
+        playerName: myName,
+        playerId: myPlayerId || "",
+        origin: typeof window !== "undefined" ? window.location.origin : "capacitor://localhost",
+        platform,
+        enabled: true,
+        updatedAt: Date.now(),
+      },
+      { merge: true },
+    );
+
+    window.localStorage.setItem(PUSH_DOC_KEY, tokenDocumentId);
+    window.localStorage.setItem(PUSH_GROUP_KEY, groupCode);
+  };
+
+  const waitForNativePushToken = () => {
+    if (nativePushTokenRef.current) return Promise.resolve(nativePushTokenRef.current);
+    return new Promise<string>((resolve, reject) => {
+      nativePushWaiterRef.current = { resolve, reject };
+      window.setTimeout(() => {
+        if (!nativePushWaiterRef.current) return;
+        nativePushWaiterRef.current = null;
+        reject(new Error("Tempo limite ao obter token push nativo."));
+      }, 12000);
+    });
+  };
+
+  const enablePushNotifications = async ({ requestPermission = true, quiet = false } = {}) => {
+    if (notificationBusy || pushSetupRef.current) return false;
+    pushSetupRef.current = true;
+    setNotificationBusy(true);
+    try {
+      if (IS_NATIVE_APP) {
+        if (!HAS_NATIVE_PUSH || !db) {
+          setNotificationState("unsupported");
+          if (!quiet) {
+            pushToast({
+              title: "Notificações indisponíveis",
+              body: "Este dispositivo não suporta notificações push nesta versão.",
+            });
+          }
+          return false;
+        }
+
+        let permission = await PushNotifications.checkPermissions();
+        if (permission.receive === "prompt" && requestPermission) {
+          permission = await PushNotifications.requestPermissions();
+        }
+        if (permission.receive === "denied") {
+          setNotificationState("blocked");
+          window.localStorage.removeItem(PUSH_ENABLED_KEY);
+          if (!quiet) {
+            pushToast({
+              title: "Notificações bloqueadas",
+              body: "Permita notificações nas definições do telemóvel e tente novamente.",
+            });
+          }
+          return false;
+        }
+        if (permission.receive !== "granted") {
+          setNotificationState("inactive");
+          return false;
+        }
+        if (!groupCode || !myName) {
+          setNotificationState("inactive");
+          return false;
+        }
+
+        await PushNotifications.register();
+        const token = await waitForNativePushToken();
+        await upsertPushTokenRegistration(token, "android");
+
+        window.localStorage.setItem(PUSH_ENABLED_KEY, "1");
+        setNotificationState("active");
+        if (!quiet) {
+          pushToast({
+            title: "Notificações ativadas",
+            body: "Vai receber mensagens e resultados mesmo com a app fechada.",
+          });
+        }
+        return true;
+      }
+
+      const browserSupportsNotifications =
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        "serviceWorker" in navigator &&
+        firebaseApp &&
+        db &&
+        await isSupported();
+
+      if (!browserSupportsNotifications) {
+        setNotificationState("unsupported");
+        if (!quiet) {
+          pushToast({
+            title: "Notificações indisponíveis",
+            body: "Este navegador não suporta notificações push para esta app.",
+          });
+        }
+        return false;
+      }
+
+      let permission = Notification.permission;
+      if (permission === "default" && requestPermission) {
+        permission = await Notification.requestPermission();
+      }
+      if (permission === "denied") {
+        setNotificationState("blocked");
+        window.localStorage.removeItem(PUSH_ENABLED_KEY);
+        if (!quiet) {
+          pushToast({
+            title: "Notificações bloqueadas",
+            body: "Permita notificações nas definições deste site e tente novamente.",
+          });
+        }
+        return false;
+      }
+      if (permission !== "granted") {
+        setNotificationState("inactive");
+        return false;
+      }
+      if (!groupCode || !myName) {
+        setNotificationState("inactive");
+        return false;
+      }
+
+      const { workerUrl, scope } = getMessagingServiceWorkerInfo();
+      const registration = await navigator.serviceWorker.register(workerUrl.href, { scope });
+      await navigator.serviceWorker.ready;
+
+      const messaging = getMessaging(firebaseApp);
+      const tokenOptions: Record<string, any> = { serviceWorkerRegistration: registration };
+      if (env.VITE_FIREBASE_VAPID_KEY) {
+        tokenOptions.vapidKey = env.VITE_FIREBASE_VAPID_KEY;
+      }
+      const token = await getToken(messaging, tokenOptions);
+      if (!token) {
+        throw new Error("O navegador não devolveu um token de notificações.");
+      }
+
+      await upsertPushTokenRegistration(token, "web");
+
+      window.localStorage.setItem(PUSH_ENABLED_KEY, "1");
+      setNotificationState("active");
+      if (!quiet) {
+        pushToast({
+          title: "Notificações ativadas",
+          body: "Vai receber mensagens e resultados mesmo com a app fechada.",
+        });
+      }
+      return true;
+    } catch (error) {
+      console.error("Falha ao ativar notificações push", error);
+      setNotificationState("error");
+      if (!quiet) {
+        pushToast({
+          title: "Não foi possível ativar",
+          body: IS_NATIVE_APP
+            ? "Tente novamente. Se continuar, confirme as permissões no telemóvel."
+            : "Tente novamente. Se continuar, confirme as permissões do navegador.",
+        });
+      }
+      return false;
+    } finally {
+      pushSetupRef.current = false;
+      setNotificationBusy(false);
+    }
+  };
+
+  const disablePushNotifications = async () => {
+    if (notificationBusy || pushSetupRef.current) return;
+    pushSetupRef.current = true;
+    setNotificationBusy(true);
+    try {
+      if (IS_NATIVE_APP && HAS_NATIVE_PUSH) {
+        try {
+          await PushNotifications.unregister();
+        } catch (error) {
+          console.warn("Não foi possível desregistar o push nativo.", error);
+        }
+      } else if (firebaseApp && await isSupported()) {
+        try {
+          await deleteToken(getMessaging(firebaseApp));
+        } catch (error) {
+          console.warn("Não foi possível apagar o token local.", error);
+        }
+      }
+      await removeStoredPushSubscription();
+      window.localStorage.removeItem(PUSH_ENABLED_KEY);
+      setNotificationState("inactive");
+      pushToast({
+        title: "Notificações desativadas",
+        body: "Este telemóvel deixou de receber avisos desta app.",
+      });
+    } finally {
+      pushSetupRef.current = false;
+      setNotificationBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    const initNotificationState = async () => {
+      if (IS_NATIVE_APP) {
+        if (!HAS_NATIVE_PUSH) {
+          setNotificationState("unsupported");
+          return;
+        }
+        const permission = await PushNotifications.checkPermissions();
+        if (permission.receive === "denied") {
+          setNotificationState("blocked");
+          return;
+        }
+
+        const locallyEnabled = window.localStorage.getItem(PUSH_ENABLED_KEY) === "1";
+        if (!locallyEnabled) {
+          setNotificationState("inactive");
+          return;
+        }
+        if (phase !== "app" || !groupCode || !myName) return;
+
+        const previousGroup = window.localStorage.getItem(PUSH_GROUP_KEY);
+        if (previousGroup && previousGroup !== groupCode) {
+          removeStoredPushSubscription().finally(() => {
+            window.localStorage.removeItem(PUSH_ENABLED_KEY);
+            setNotificationState("inactive");
+          });
+          return;
+        }
+        enablePushNotifications({ requestPermission: false, quiet: true });
+        return;
+      }
+
+      if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
+        setNotificationState("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setNotificationState("blocked");
+        return;
+      }
+      const locallyEnabled = window.localStorage.getItem(PUSH_ENABLED_KEY) === "1";
+      if (!locallyEnabled) {
+        setNotificationState("inactive");
+        return;
+      }
+      if (phase !== "app" || !groupCode || !myName) return;
+
+      const previousGroup = window.localStorage.getItem(PUSH_GROUP_KEY);
+      if (previousGroup && previousGroup !== groupCode) {
+        removeStoredPushSubscription().finally(() => {
+          window.localStorage.removeItem(PUSH_ENABLED_KEY);
+          setNotificationState("inactive");
+        });
+        return;
+      }
+      enablePushNotifications({ requestPermission: false, quiet: true });
+    };
+
+    initNotificationState().catch(() => setNotificationState("error"));
+  }, [phase, groupCode, myName, myPlayerId]);
+
+  useEffect(() => {
+    if (!IS_NATIVE_APP || !HAS_NATIVE_PUSH) return;
+
+    let removed = false;
+    const registrationListener = PushNotifications.addListener("registration", (token) => {
+      const value = String(token?.value || "").trim();
+      if (!value) return;
+      nativePushTokenRef.current = value;
+      if (nativePushWaiterRef.current) {
+        nativePushWaiterRef.current.resolve(value);
+        nativePushWaiterRef.current = null;
+      }
+    });
+
+    const registrationErrorListener = PushNotifications.addListener("registrationError", (error) => {
+      console.error("Erro de registo push nativo", error);
+      if (nativePushWaiterRef.current) {
+        nativePushWaiterRef.current.reject(new Error("Falha ao registar o push no telemóvel."));
+        nativePushWaiterRef.current = null;
+      }
+    });
+
+    const receivedListener = PushNotifications.addListener("pushNotificationReceived", (notification) => {
+      const data = notification?.data || {};
+      const destination = PUSH_TABS.has(data.tab || "") ? data.tab : "results";
+      pushToast({
+        title: notification?.title || data.title || "Nova atividade",
+        body: notification?.body || data.body || "Abra a app para ver as novidades.",
+      });
+      if (destination === "results") setUnread((value) => value + 1);
+      if (destination === "chat" && tabRef.current !== "chat") setUnreadChat((value) => value + 1);
+    });
+
+    const actionListener = PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+      const data = action?.notification?.data || {};
+      const destination = PUSH_TABS.has(data.tab || "") ? data.tab : "results";
+      setTab(destination);
+      if (destination === "chat") setUnreadChat(0);
+    });
+
+    return () => {
+      if (removed) return;
+      removed = true;
+      registrationListener.then((listener) => listener.remove()).catch(() => {});
+      registrationErrorListener.then((listener) => listener.remove()).catch(() => {});
+      receivedListener.then((listener) => listener.remove()).catch(() => {});
+      actionListener.then((listener) => listener.remove()).catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    if (IS_NATIVE_APP) return;
+    if (!firebaseApp || phase !== "app") return;
+    let unsubscribe = () => {};
+    let cancelled = false;
+
+    isSupported().then((supported) => {
+      if (!supported || cancelled) return;
+      unsubscribe = onMessage(getMessaging(firebaseApp), (payload) => {
+        const data = payload.data || {};
+        const destination = PUSH_TABS.has(data.tab || "") ? data.tab : "results";
+        pushToast({
+          title: data.title || "Nova atividade",
+          body: data.body || "Abra a app para ver as novidades.",
+        });
+        if (destination === "results") setUnread((value) => value + 1);
+        if (destination === "chat" && tab !== "chat") setUnreadChat((value) => value + 1);
+      });
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [phase, tab]);
+
+  useEffect(() => {
+    if (IS_NATIVE_APP) return;
+    if (!("serviceWorker" in navigator)) return;
+    const handleWorkerMessage = (event) => {
+      if (event.data?.type !== "OPEN_APP_TAB") return;
+      const destination = event.data?.tab;
+      if (PUSH_TABS.has(destination)) setTab(destination);
+    };
+    navigator.serviceWorker.addEventListener("message", handleWorkerMessage);
+
+    const requestedTab = getRequestedPushTab();
+    if (requestedTab !== "log") {
+      setTab(requestedTab);
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("tab");
+      window.history.replaceState({}, "", cleanUrl.href);
+    }
+    return () => navigator.serviceWorker.removeEventListener("message", handleWorkerMessage);
+  }, []);
+
   const saveGroup = async (data) => {
-    setGroupData(data);
-    cacheGroupLocally(groupCode, data);
-    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(data), true);
+    if (!authUid) {
+      setStorageOk(false);
+      return false;
+    }
+    const normalized = normalizeGroupData(data);
+    const memberUids = uniqueStringList([...(normalized.memberUids || []), authUid]);
+    const adminUids = uniqueStringList(normalized.adminUids || []);
+    const securedData = {
+      ...normalized,
+      memberUids,
+      adminUids,
+    };
+    setGroupData(securedData);
+    cacheGroupLocally(groupCode, securedData);
+    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(securedData), true);
     setStorageOk(Boolean(persisted));
     return Boolean(persisted);
   };
@@ -2195,6 +3054,7 @@ export default function App() {
     players.some((p) => normalizeName(p.name) === normalizeName(candidate));
 
   const handleCreateGroup = async (name, groupName) => {
+    if (!authUid) return { error: "Aguardando autenticação segura. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const code = genCode();
     const firstPlayer = { id: genId(), name: trimmedName, emblemId: "" };
@@ -2210,6 +3070,8 @@ export default function App() {
       },
       players: [firstPlayer],
       matches: [],
+      memberUids: [authUid],
+      adminUids: [authUid],
       messages: [],
       schedules: [],
       activeLeague: null,
@@ -2228,9 +3090,11 @@ export default function App() {
     lastSeenMessages.current = 0;
     setUnreadChat(0);
     setPhase("app");
+    return { ok: true };
   };
 
   const handleJoinGroup = async (name, code) => {
+    if (!authUid) return { error: "Aguardando autenticação segura. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const upper = code.trim().toUpperCase();
     const raw = await storageGet(`group:${upper}`, true);
@@ -2247,6 +3111,8 @@ export default function App() {
     );
 
     if (existingPlayer) {
+      data.memberUids = uniqueStringList([...(data.memberUids || []), authUid]);
+      await storageSet(`group:${upper}`, JSON.stringify(data), true);
       setMyName(existingPlayer.name);
       setMyPlayerId(existingPlayer.id || "");
       setGroupCode(upper);
@@ -2264,6 +3130,7 @@ export default function App() {
 
     const newPlayer = { id: genId(), name: trimmedName, emblemId: "" };
     data.players.push(newPlayer);
+    data.memberUids = uniqueStringList([...(data.memberUids || []), authUid]);
     await storageSet(`group:${upper}`, JSON.stringify(data), true);
     setMyName(trimmedName);
     setMyPlayerId(newPlayer.id);
@@ -2378,14 +3245,23 @@ export default function App() {
     const nextPlayers = (groupData?.players || []).filter(
       (p) => normalizeName(p.name) !== normalizeName(trimmed)
     );
+    const removedPlayerIds = new Set(
+      (groupData?.players || [])
+        .filter((player) => normalizeName(player.name) === normalizeName(trimmed))
+        .map((player) => player.id)
+    );
     const nextMatches = (groupData?.matches || []).filter(
       (m) => normalizeName(m.playerA) !== normalizeName(trimmed) && normalizeName(m.playerB) !== normalizeName(trimmed)
+    );
+    const nextAccounts = (groupData?.memberAccounts || []).filter(
+      (account) => !removedPlayerIds.has(account.playerId)
     );
 
     const data = {
       ...groupData,
       players: nextPlayers,
       matches: nextMatches,
+      memberAccounts: nextAccounts,
     };
 
     const ok = await saveGroup(data);
@@ -2396,19 +3272,57 @@ export default function App() {
   };
 
   const handleDeleteMatch = async (matchId) => {
+    if (!isAdmin) {
+      return { error: "Somente o administrador pode apagar resultados." };
+    }
     const confirmed = window.confirm("Tem certeza que deseja apagar esta partida?");
     if (!confirmed) return;
 
-    const nextMatches = (groupData?.matches || []).filter((m) => m.id !== matchId);
+    const currentMatches = groupData?.matches || [];
+    const matchToDelete = currentMatches.find((m) => m.id === matchId);
+    if (!matchToDelete) return { error: "Resultado não encontrado." };
+
+    const nextMatches = currentMatches.filter((m) => m.id !== matchId);
+    const deletedEntry = {
+      id: genId(),
+      match: matchToDelete,
+      deletedBy: myName || "Administrador",
+      deletedAt: Date.now(),
+    };
     const data = {
       ...groupData,
       matches: nextMatches,
+      deletedMatches: [...(groupData?.deletedMatches || []), deletedEntry],
     };
     const ok = await saveGroup(data);
     if (ok) pushToast({
       title: "Resultado apagado",
       body: "A classificação foi atualizada.",
     });
+    return ok ? { ok: true } : { error: "Nao foi possivel apagar o resultado." };
+  };
+
+  const handleRestoreDeletedMatch = async (deletedId) => {
+    if (!isAdmin) return { error: "Somente o administrador pode recuperar resultados." };
+
+    const trash = groupData?.deletedMatches || [];
+    const entry = trash.find((item) => item.id === deletedId);
+    if (!entry?.match) return { error: "Resultado nao encontrado na lixeira." };
+
+    const nextTrash = trash.filter((item) => item.id !== deletedId);
+    const data = {
+      ...groupData,
+      matches: [...(groupData?.matches || []), entry.match],
+      deletedMatches: nextTrash,
+    };
+    const ok = await saveGroup(data);
+    if (ok) {
+      pushToast({
+        title: "Resultado recuperado",
+        body: "O resultado voltou para a lista principal.",
+      });
+    }
+    return ok ? { ok: true } : { error: "Nao foi possivel recuperar o resultado." };
   };
 
   const handleSendMessage = async ({ text = "", mediaDataUrl = "", type = "text" }) => {
@@ -2431,7 +3345,8 @@ export default function App() {
       messages: [...(groupData?.messages || []), entry],
     };
 
-    await saveGroup(data);
+    const ok = await saveGroup(data);
+    if (!ok) return { error: "Não foi possível enviar a mensagem agora." };
     return { ok: true };
   };
 
@@ -2679,6 +3594,9 @@ export default function App() {
   };
 
   const handleLeaveGroup = async () => {
+    await removeStoredPushSubscription();
+    window.localStorage.removeItem(PUSH_ENABLED_KEY);
+    setNotificationState("inactive");
     try {
       if (auth) {
         await signOut(auth);
@@ -2924,6 +3842,7 @@ export default function App() {
                   onDeletePlayer={handleDeletePlayer}
                   onCallPlayer={handleCallPlayer}
                   isAdmin={isAdmin}
+                  presenceMap={presenceMap}
                 />
               </div>
             )}
@@ -2982,6 +3901,10 @@ export default function App() {
             myEmblemId={myEmblemId}
             onSaveMyEmblem={handleSaveMyEmblem}
             onNotify={pushToast}
+            notificationState={notificationState}
+            notificationBusy={notificationBusy}
+            onEnableNotifications={() => enablePushNotifications({ requestPermission: true, quiet: false })}
+            onDisableNotifications={disablePushNotifications}
           />
           <button
             onClick={() => {
@@ -2989,9 +3912,9 @@ export default function App() {
               setThemeOpen(true);
             }}
             className="md-theme-fab fixed right-5 md-safe-float z-40 md-btn-amber rounded-full px-4 py-3 font-oswald text-sm shadow-[0_12px_24px_rgba(0,0,0,0.35)] md-touch-target"
-            aria-label="Abrir temas"
+            aria-label="Abrir configurações"
           >
-            <span className="md-theme-fab-content inline-flex items-center gap-2"><Settings size={18} /> <span className="md-theme-fab-label">Temas</span></span>
+            <span className="md-theme-fab-content inline-flex items-center gap-2"><Settings size={18} /> <span className="md-theme-fab-label">Configurações</span></span>
           </button>
           <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
             {toasts.map((t) => (
@@ -3035,7 +3958,12 @@ function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAd
         setBusy(false);
         return setError("Apenas o administrador pode criar grupos.");
       }
-      await onCreate(name.trim(), groupName.trim());
+      const res = await onCreate(name.trim(), groupName.trim());
+      if (res?.error) {
+        setError(res.error);
+        setBusy(false);
+        return;
+      }
     } else {
       if (!code.trim()) {
         setBusy(false);
@@ -3459,7 +4387,7 @@ function Tabs({ tab, setTab, unreadChat = 0 }) {
 
 /* ---------------- User Management ---------------- */
 
-function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, isAdmin }) {
+function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, isAdmin, presenceMap }) {
   const [newPlayer, setNewPlayer] = useState("");
   const [error, setError] = useState("");
 
@@ -3499,7 +4427,10 @@ function UserManagement({ players, onAddPlayer, onDeletePlayer, onCallPlayer, is
           {players.length === 0 && <p className="md-text-muted text-sm">Nenhum usuário cadastrado ainda.</p>}
           {players.map((player) => (
             <div key={player.id} className="flex items-center justify-between rounded-lg px-3 py-2 md-bg-panel-dark-40">
-              <NameWithEmblem name={player.name} emblemId={player.emblemId} size={38} />
+                <div className="flex min-w-0 items-center gap-2">
+                  <PresenceBadge online={isPresenceOnline(presenceMap[player.id])} />
+                  <NameWithEmblem name={player.name} emblemId={player.emblemId} size={38} />
+                </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -4202,17 +5133,17 @@ function LogMatch({ players, matches, myName, onSubmit }) {
   };
 
   useEffect(() => {
-    if (!a && players.length) {
-      const mine = players.find((p) => p.name === myName);
-      setA(mine ? mine.name : players[0]?.name || "");
-    }
-  }, [players, myName, a]);
+    if (!myName) return;
+    if (a !== myName) setA(myName);
+  }, [myName, a]);
 
-  const options = players.map((p) => p.name);
+  const options = players
+    .map((p) => p.name)
+    .filter((name) => String(name || "").trim().toLowerCase() !== String(myName || "").trim().toLowerCase());
   const rankedPlayers = computeStats(players, matches).sort(
     (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.wins - a.wins || b.gf - a.gf
   );
-  const canSubmit = a && b && a !== b;
+  const canSubmit = myName && b && String(myName).trim().toLowerCase() !== String(b).trim().toLowerCase();
 
   const submit = async () => {
     if (!canSubmit || saving) return;
@@ -4306,8 +5237,13 @@ function LogMatch({ players, matches, myName, onSubmit }) {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              <PlayerSelect label="Jogador A" value={a} onChange={setA} options={options} />
-              <PlayerSelect label="Jogador B" value={b} onChange={setB} options={options} />
+              <div className="md-player-select min-w-0">
+                <label className="block text-sm font-oswald md-text-bone mb-1.5">Jogador logado</label>
+                <div className="md-input md-player-name-select w-full rounded-lg px-4 py-3 font-oswald opacity-80">
+                  {myName || "Usuário não identificado"}
+                </div>
+              </div>
+              <PlayerSelect label="Adversário" value={b} onChange={setB} options={options} />
             </div>
 
             <div className="flex items-center justify-center gap-6 md-bg-stadium rounded-xl py-6 md-border md-border-line">
@@ -5101,15 +6037,15 @@ function HeadToHead({ players, matches }) {
                       </div>
 
                       <div className="border-t border-white/10">
-                        {list.length > 0 ? (
+                        {list.length > 0 && (
                           <table className="min-w-full text-sm">
                             <thead className="md-bg-panel-dark-40">
                               <tr>
-                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DATA</th>
-                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">VENCEDOR</th>
-                                  <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-muted">PLACAR</th>
-                                  <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DERROTADO</th>
-                                </tr>
+                                <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DATA</th>
+                                <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">VENCEDOR</th>
+                                <th className="px-3 py-2 text-center font-oswald tracking-wide md-text-muted">PLACAR</th>
+                                <th className="px-3 py-2 text-left font-oswald tracking-wide md-text-muted">DERROTADO</th>
+                              </tr>
                             </thead>
                             <tbody>
                               {[...list].reverse().map((m) => {
@@ -5129,7 +6065,8 @@ function HeadToHead({ players, matches }) {
                               })}
                             </tbody>
                           </table>
-                        ) : (
+                        )}
+                        {list.length === 0 && (
                           <p className="px-3 py-3 text-xs md-text-muted">Nenhum resultado registrado ainda para este confronto.</p>
                         )}
                       </div>

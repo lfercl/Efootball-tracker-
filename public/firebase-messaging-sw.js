@@ -1,50 +1,66 @@
-importScripts('https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.22.2/firebase-messaging-compat.js');
+importScripts("https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/9.22.2/firebase-messaging-compat.js");
 
-let firebaseInitialized = false;
-
-const initFirebase = (config) => {
-  if (firebaseInitialized || !config) return;
-  try {
-    firebase.initializeApp(config);
-    const messaging = firebase.messaging();
-    messaging.onBackgroundMessage((payload) => {
-      const title = payload.notification?.title || 'Novo resultado registrado';
-      const body = payload.notification?.body || payload.data?.body || 'Confira a partida no app.';
-      self.registration.showNotification(title, {
-        body,
-        icon: './favicon.ico',
-        data: payload.data,
-      });
-    });
-    firebaseInitialized = true;
-  } catch (error) {
-    console.error('FCM service worker failed to initialize', error);
-  }
+const workerUrl = new URL(self.location.href);
+const firebaseConfig = {
+  apiKey: workerUrl.searchParams.get("apiKey") || "",
+  authDomain: workerUrl.searchParams.get("authDomain") || "",
+  projectId: workerUrl.searchParams.get("projectId") || "",
+  storageBucket: workerUrl.searchParams.get("storageBucket") || "",
+  messagingSenderId: workerUrl.searchParams.get("messagingSenderId") || "",
+  appId: workerUrl.searchParams.get("appId") || "",
 };
 
-self.addEventListener('message', (event) => {
-  if (!event.data) return;
-  if (event.data.type === 'INITIALIZE_FCM') {
-    initFirebase(event.data.config);
-  }
-});
+const canInitialize = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.projectId &&
+  firebaseConfig.messagingSenderId &&
+  firebaseConfig.appId
+);
 
-// Required by some installability checks on mobile browsers.
-self.addEventListener('fetch', () => {});
+if (canInitialize && !firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
-self.addEventListener('notificationclick', (event) => {
+if (canInitialize) {
+  const messaging = firebase.messaging();
+  messaging.onBackgroundMessage((payload) => {
+    const data = payload.data || {};
+    const title = data.title || "Nova atividade";
+    const body = data.body || "Abra a app para ver as novidades.";
+    const icon = new URL("icons/icon-192.png", self.registration.scope).href;
+
+    return self.registration.showNotification(title, {
+      body,
+      icon,
+      badge: icon,
+      tag: data.eventId || data.type || "matchday-activity",
+      renotify: true,
+      data: {
+        tab: data.tab || "results",
+        eventId: data.eventId || "",
+      },
+    });
+  });
+}
+
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('./');
-      }
-    })
-  );
+  const tab = event.notification.data?.tab || "results";
+  const target = new URL(self.registration.scope);
+  target.searchParams.set("tab", tab);
+
+  event.waitUntil((async () => {
+    const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    const appClient = clientList.find((client) => client.url.startsWith(self.registration.scope));
+
+    if (appClient) {
+      const navigated = "navigate" in appClient ? await appClient.navigate(target.href) : appClient;
+      const activeClient = navigated || appClient;
+      activeClient.postMessage({ type: "OPEN_APP_TAB", tab });
+      if ("focus" in activeClient) return activeClient.focus();
+      return activeClient;
+    }
+    return clients.openWindow ? clients.openWindow(target.href) : undefined;
+  })());
 });
