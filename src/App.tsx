@@ -3102,13 +3102,28 @@ export default function App() {
     return () => navigator.serviceWorker.removeEventListener("message", handleWorkerMessage);
   }, []);
 
+  const ensureAuthUid = async () => {
+    if (authUid) return authUid;
+    if (!auth) return "";
+    try {
+      const credential = await signInAnonymously(auth);
+      const uid = String(credential?.user?.uid || auth.currentUser?.uid || "");
+      if (uid) setAuthUid(uid);
+      return uid;
+    } catch (error) {
+      console.error("Falha ao garantir sessao autenticada.", error);
+      return String(auth.currentUser?.uid || "");
+    }
+  };
+
   const saveGroup = async (data) => {
-    if (!authUid) {
+    const effectiveUid = await ensureAuthUid();
+    if (!effectiveUid) {
       setStorageOk(false);
       return false;
     }
     const normalized = normalizeGroupData(data);
-    const memberUids = uniqueStringList([...(normalized.memberUids || []), authUid]);
+    const memberUids = uniqueStringList([...(normalized.memberUids || []), effectiveUid]);
     const adminUids = uniqueStringList(normalized.adminUids || []);
     const securedData = {
       ...normalized,
@@ -3128,7 +3143,8 @@ export default function App() {
     players.some((p) => normalizeName(p.name) === normalizeName(candidate));
 
   const handleCreateGroup = async (name, groupName) => {
-    if (!authUid) return { error: "Aguardando autenticação segura. Tente novamente em alguns segundos." };
+    const effectiveUid = await ensureAuthUid();
+    if (!effectiveUid) return { error: "Nao foi possivel autenticar agora. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const code = genCode();
     const firstPlayer = { id: genId(), name: trimmedName, emblemId: "" };
@@ -3144,8 +3160,8 @@ export default function App() {
       },
       players: [firstPlayer],
       matches: [],
-      memberUids: [authUid],
-      adminUids: [authUid],
+      memberUids: [effectiveUid],
+      adminUids: [effectiveUid],
       messages: [],
       schedules: [],
       activeLeague: null,
@@ -3168,7 +3184,8 @@ export default function App() {
   };
 
   const handleJoinGroup = async (name, code) => {
-    if (!authUid) return { error: "Aguardando autenticação segura. Tente novamente em alguns segundos." };
+    const effectiveUid = await ensureAuthUid();
+    if (!effectiveUid) return { error: "Nao foi possivel autenticar agora. Tente novamente em alguns segundos." };
     const trimmedName = name.trim();
     const upper = code.trim().toUpperCase();
     const raw = await storageGet(`group:${upper}`, true);
@@ -3185,7 +3202,7 @@ export default function App() {
     );
 
     if (existingPlayer) {
-      data.memberUids = uniqueStringList([...(data.memberUids || []), authUid]);
+      data.memberUids = uniqueStringList([...(data.memberUids || []), effectiveUid]);
       await storageSet(`group:${upper}`, JSON.stringify(data), true);
       setMyName(existingPlayer.name);
       setMyPlayerId(existingPlayer.id || "");
@@ -3204,7 +3221,7 @@ export default function App() {
 
     const newPlayer = { id: genId(), name: trimmedName, emblemId: "" };
     data.players.push(newPlayer);
-    data.memberUids = uniqueStringList([...(data.memberUids || []), authUid]);
+  data.memberUids = uniqueStringList([...(data.memberUids || []), effectiveUid]);
     await storageSet(`group:${upper}`, JSON.stringify(data), true);
     setMyName(trimmedName);
     setMyPlayerId(newPlayer.id);

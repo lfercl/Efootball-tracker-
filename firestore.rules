@@ -5,50 +5,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isGroupMemberFromResource() {
-      return isSignedIn() && resource.data.memberUids is list && request.auth.uid in resource.data.memberUids;
-    }
-
-    function isGroupAdminFromResource() {
-      return isSignedIn() && resource.data.adminUids is list && request.auth.uid in resource.data.adminUids;
-    }
-
-    function canCreateGroupDoc() {
-      return isSignedIn()
-        && request.resource.data.groupCode is string
-        && request.resource.data.memberUids is list
-        && request.auth.uid in request.resource.data.memberUids
-        && request.resource.data.value is map
-        && request.resource.data.value.memberUids is list
-        && request.auth.uid in request.resource.data.value.memberUids
-        && request.resource.data.updatedAt is number;
-    }
-
-    function canUpdateGroupDoc() {
-      return isSignedIn()
-        && (
-          isGroupMemberFromResource()
-          || isGroupAdminFromResource()
-          || !(resource.data.memberUids is list)
-        )
-        && request.resource.data.groupCode == resource.data.groupCode
-        && request.resource.data.memberUids is list
-        && request.auth.uid in request.resource.data.memberUids
-        && request.resource.data.value is map
-        && request.resource.data.value.memberUids is list
-        && request.auth.uid in request.resource.data.value.memberUids
-        && request.resource.data.updatedAt is number;
-    }
-
-    function canReadGroupDoc() {
-      return isGroupMemberFromResource() || isGroupAdminFromResource() || !(resource.data.memberUids is list);
-    }
-
     match /sharedStorage/{document=**} {
-      allow read: if canReadGroupDoc();
-      allow create: if canCreateGroupDoc();
-      allow update: if canUpdateGroupDoc();
-      allow delete: if isGroupAdminFromResource();
+      allow read, create, update, delete: if isSignedIn();
     }
 
     match /pushTokens/{tokenId} {
