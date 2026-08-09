@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { jsPDF } from "jspdf";
+import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { Capacitor } from "@capacitor/core";
@@ -855,6 +856,27 @@ function GlobalStyle() {
         background:linear-gradient(90deg, transparent, rgba(2,6,23,.42), transparent);
       }
       .md-achievement-card__title-icon{ font-size:1.2rem; filter:drop-shadow(0 0 8px var(--ach-glow)); }
+      .md-achievement-card__summary{
+        position:relative;
+        z-index:2;
+        display:block;
+        margin:.65rem .85rem 0;
+        border:1px solid color-mix(in srgb, var(--ach-edge) 24%, transparent);
+        border-radius:.72rem;
+        padding:.7rem .78rem;
+        color:rgba(255,255,255,.8);
+        background:rgba(2,6,23,.34);
+        font:.68rem/1.45 'Inter', sans-serif;
+        text-align:left;
+      }
+      .md-achievement-card__summary strong{
+        display:block;
+        margin-bottom:.28rem;
+        color:color-mix(in srgb, var(--ach-edge) 84%, white);
+        font:600 .6rem/1 'Oswald', sans-serif;
+        letter-spacing:.14em;
+        text-transform:uppercase;
+      }
       .md-achievement-card__reveal{
         position:relative;
         z-index:2;
@@ -898,6 +920,11 @@ function GlobalStyle() {
         text-transform:uppercase;
       }
       .md-achievement-card.is-open .md-achievement-card__details{ grid-template-rows:1fr; opacity:1; }
+      .md-achievement-share-actions{
+        display:grid;
+        grid-template-columns:1fr;
+        gap:.55rem;
+      }
       .md-achievement-share-btn,
       .md-achievement-profile-toggle{
         display:flex;
@@ -6438,10 +6465,262 @@ async function shareAchievementCard({ item, playerName, emblemId, playerGoals })
   throw new Error("Não foi possível copiar o link interativo.");
 }
 
+function drawGifRoundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawGifWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 5) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  });
+  if (current) lines.push(current);
+
+  const visible = lines.slice(0, maxLines);
+  if (lines.length > maxLines && visible.length) {
+    let last = visible[visible.length - 1];
+    while (last.length > 2 && ctx.measureText(`${last}…`).width > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    visible[visible.length - 1] = `${last}…`;
+  }
+  visible.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return visible.length;
+}
+
+function getAchievementGifPalette(rarity) {
+  const palettes = {
+    standard: { deep: "#07152b", mid: "#173b57", accent: "#9ef3ff" },
+    featured: { deep: "#101b42", mid: "#243d8f", accent: "#e7ff00" },
+    epic: { deep: "#20103d", mid: "#5d1f78", accent: "#75eaff" },
+    legendary: { deep: "#341250", mid: "#7a3b32", accent: "#ffc85c" },
+  };
+  return palettes[rarity] || palettes.standard;
+}
+
+function drawAchievementGifFrame(ctx, { item, playerName, playerGoals, meta, emblemImage }, progress) {
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  const goalValue = getAchievementGoalValue(item, playerGoals);
+  const { deep, mid, accent } = getAchievementGifPalette(meta.rarity);
+
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, mid);
+  background.addColorStop(.52, deep);
+  background.addColorStop(1, "#020617");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, height);
+
+  const pulse = .5 + Math.sin(progress * Math.PI * 2) * .14;
+  const aura = ctx.createRadialGradient(width / 2, 190, 18, width / 2, 190, 165);
+  aura.addColorStop(0, `${accent}cc`);
+  aura.addColorStop(pulse, `${accent}28`);
+  aura.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = aura;
+  ctx.fillRect(0, 20, width, 360);
+
+  ctx.save();
+  ctx.globalAlpha = .22;
+  ctx.translate(-150 + progress * (width + 300), 0);
+  ctx.rotate(-.28);
+  const shine = ctx.createLinearGradient(-42, 0, 42, 0);
+  shine.addColorStop(0, "rgba(255,255,255,0)");
+  shine.addColorStop(.5, "rgba(255,255,255,.95)");
+  shine.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = shine;
+  ctx.fillRect(-42, -110, 84, height + 220);
+  ctx.restore();
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 5;
+  ctx.strokeRect(12, 12, width - 24, height - 24);
+  ctx.strokeStyle = "rgba(255,255,255,.3)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(20, 20, width - 40, height - 40);
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "700 48px Oswald, sans-serif";
+  ctx.fillText(String(goalValue), 32, 70);
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.font = "700 13px Oswald, sans-serif";
+  ctx.fillText("GOLS", 35, 90);
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = accent;
+  ctx.font = "700 15px Oswald, sans-serif";
+  ctx.fillText(meta.rarityLabel.toUpperCase(), width - 32, 55);
+  ctx.fillStyle = "rgba(255,255,255,.68)";
+  ctx.font = "600 9px Inter, sans-serif";
+  ctx.fillText("CARTA DE CONQUISTA", width - 32, 73);
+
+  const emblemX = width / 2;
+  const emblemY = 172;
+  const emblemSize = 122;
+  ctx.fillStyle = "rgba(255,255,255,.12)";
+  ctx.beginPath();
+  ctx.arc(emblemX, emblemY, emblemSize / 2 + 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (emblemImage) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(emblemX, emblemY, emblemSize / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(emblemImage, emblemX - emblemSize / 2, emblemY - emblemSize / 2, emblemSize, emblemSize);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = accent;
+    ctx.font = "700 42px Oswald, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials(playerName), emblemX, emblemY);
+    ctx.textBaseline = "alphabetic";
+  }
+
+  for (let i = 0; i < 12; i += 1) {
+    const angle = (i / 12) * Math.PI * 2 + progress * Math.PI * 2;
+    const radius = 82 + (i % 3) * 9;
+    const x = emblemX + Math.cos(angle) * radius;
+    const y = emblemY + Math.sin(angle) * radius;
+    ctx.globalAlpha = .35 + (i % 2) * .25;
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(x, y, 1.5 + (i % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "700 27px Oswald, sans-serif";
+  drawGifWrappedText(ctx, playerName, width / 2, 268, width - 64, 31, 2);
+
+  ctx.fillStyle = accent;
+  ctx.font = "700 11px Oswald, sans-serif";
+  ctx.fillText("CONQUISTA DESBLOQUEADA", width / 2, 316);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "600 16px Inter, sans-serif";
+  drawGifWrappedText(ctx, item.title, width / 2, 344, width - 62, 21, 3);
+
+  drawGifRoundedRect(ctx, 28, 402, width - 56, 132, 12);
+  ctx.fillStyle = "rgba(2,6,23,.66)";
+  ctx.fill();
+  ctx.strokeStyle = `${accent}88`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.font = "700 11px Oswald, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("DETALHES DA CARTA", 45, 430);
+  ctx.fillStyle = "rgba(255,255,255,.88)";
+  ctx.font = "500 12px Inter, sans-serif";
+  drawGifWrappedText(ctx, meta.detail, 45, 456, width - 90, 17, 5);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255,255,255,.66)";
+  ctx.font = "600 9px Inter, sans-serif";
+  ctx.fillText("EFOOTBALL RIVALS • CARTA ANIMADA", width / 2, 572);
+}
+
+async function buildAchievementGifFile({ item, playerName, emblemId, playerGoals }) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 360;
+  canvas.height = 600;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Não foi possível preparar o GIF.");
+
+  const meta = getAchievementCardMeta(item);
+  const emblem = EMBLEM_MAP[emblemId];
+  let emblemImage = null;
+  if (emblem?.url) {
+    try {
+      emblemImage = await loadImage(emblem.url);
+    } catch {}
+  }
+
+  const gif = GIFEncoder();
+  const frameCount = 12;
+  let palette = null;
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const progress = frame / frameCount;
+    drawAchievementGifFrame(ctx, { item, playerName, playerGoals, meta, emblemImage }, progress);
+    const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    if (!palette) palette = quantize(rgba, 128);
+    const indexed = applyPalette(rgba, palette);
+    gif.writeFrame(indexed, canvas.width, canvas.height, {
+      palette: frame === 0 ? palette : undefined,
+      delay: 110,
+      repeat: 0,
+    });
+    if (frame % 3 === 2) {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+
+  gif.finish();
+  const bytes = gif.bytes();
+  const slug = String(playerName || "jogador")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42);
+  return new File([bytes], `carta-animada-${slug || "jogador"}.gif`, { type: "image/gif" });
+}
+
+async function shareAchievementGif({ item, playerName, emblemId, playerGoals }) {
+  const file = await buildAchievementGifFile({ item, playerName, emblemId, playerGoals });
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({
+      title: `Carta animada de ${playerName}`,
+      text: `${playerName}: ${item.title}`,
+      files: [file],
+    });
+    return "shared";
+  }
+
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1800);
+  return "downloaded";
+}
+
 function AchievementCard({ item, playerName, emblemId, playerGoals, index, expanded, onToggle }) {
   const meta = getAchievementCardMeta(item, index);
   const goalValue = getAchievementGoalValue(item, playerGoals);
   const [shareState, setShareState] = useState("idle");
+  const [gifState, setGifState] = useState("idle");
 
   const updateTilt = (event) => {
     if (event.pointerType !== "mouse") return;
@@ -6475,12 +6754,37 @@ function AchievementCard({ item, playerName, emblemId, playerGoals, index, expan
     }
   };
 
+  const handleGifShare = async () => {
+    if (gifState === "loading") return;
+    setGifState("loading");
+    try {
+      const result = await shareAchievementGif({ item, playerName, emblemId, playerGoals });
+      setGifState(result);
+      window.setTimeout(() => setGifState("idle"), 2500);
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.error("Falha ao partilhar GIF", error);
+        setGifState("error");
+        window.setTimeout(() => setGifState("idle"), 2800);
+      } else {
+        setGifState("idle");
+      }
+    }
+  };
+
   const shareLabel =
     shareState === "loading" ? "A PREPARAR..." :
     shareState === "shared" ? "CARTA PARTILHADA" :
     shareState === "copied" ? "LINK COPIADO" :
     shareState === "error" ? "TENTAR NOVAMENTE" :
     "PARTILHAR CARTA INTERATIVA";
+
+  const gifLabel =
+    gifState === "loading" ? "A GERAR GIF..." :
+    gifState === "shared" ? "GIF PARTILHADO" :
+    gifState === "downloaded" ? "GIF GUARDADO" :
+    gifState === "error" ? "TENTAR GIF NOVAMENTE" :
+    "PARTILHAR GIF ANIMADO";
 
   return (
     <div className="md-achievement-card-wrap">
@@ -6521,6 +6825,11 @@ function AchievementCard({ item, playerName, emblemId, playerGoals, index, expan
           <span>{item.title}</span>
         </span>
 
+        <span className="md-achievement-card__summary">
+          <strong>Detalhes da carta</strong>
+          {meta.detail}
+        </span>
+
         <span className="md-achievement-card__reveal">
           {expanded ? "Detalhes revelados" : "Toque para revelar"}
           <ChevronRight size={14} aria-hidden="true" />
@@ -6529,23 +6838,35 @@ function AchievementCard({ item, playerName, emblemId, playerGoals, index, expan
         <span className="md-achievement-card__details" aria-hidden={!expanded}>
           <span className="md-achievement-card__details-inner">
             <span className="md-achievement-card__details-copy">
-              <strong>Conquista desbloqueada</strong>
-              {meta.detail}
+              <strong>Informação da carta</strong>
+              {goalValue} gols • Raridade {meta.rarityLabel}. Esta carta acompanha o desempenho atual do jogador.
             </span>
           </span>
         </span>
       </button>
 
-      <button
-        type="button"
-        className="md-achievement-share-btn"
-        onClick={handleShare}
-        disabled={shareState === "loading"}
-        aria-label={`Partilhar carta ${item.title} de ${playerName}`}
-      >
-        <Share2 size={15} aria-hidden="true" />
-        {shareLabel}
-      </button>
+      <div className="md-achievement-share-actions">
+        <button
+          type="button"
+          className="md-achievement-share-btn"
+          onClick={handleShare}
+          disabled={shareState === "loading" || gifState === "loading"}
+          aria-label={`Partilhar link interativo da carta ${item.title} de ${playerName}`}
+        >
+          <Link2 size={15} aria-hidden="true" />
+          {shareLabel}
+        </button>
+        <button
+          type="button"
+          className="md-achievement-share-btn"
+          onClick={handleGifShare}
+          disabled={gifState === "loading" || shareState === "loading"}
+          aria-label={`Partilhar GIF animado da carta ${item.title} de ${playerName}`}
+        >
+          <Video size={15} aria-hidden="true" />
+          {gifLabel}
+        </button>
+      </div>
     </div>
   );
 }
