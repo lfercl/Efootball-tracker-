@@ -598,6 +598,284 @@ function GlobalStyle() {
       .md-anim-trophy-rise-drop{ animation: mdTrophyRiseDrop 2.2s ease-in-out infinite; }
       .md-result-stage{ min-height: 32rem; padding: 2.25rem 0; }
 
+
+      @keyframes mdAchievementFoil {
+        0% { transform: translate3d(-42%, -28%, 0) rotate(18deg); opacity: .16; }
+        48% { opacity: .55; }
+        100% { transform: translate3d(52%, 34%, 0) rotate(18deg); opacity: .12; }
+      }
+      @keyframes mdAchievementAura {
+        0%, 100% { transform: scale(.92) rotate(-4deg); opacity: .55; }
+        50% { transform: scale(1.08) rotate(4deg); opacity: .95; }
+      }
+      @keyframes mdAchievementUnlock {
+        0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ach-glow) 0%, transparent); }
+        50% { box-shadow: 0 0 28px 3px color-mix(in srgb, var(--ach-glow) 42%, transparent); }
+      }
+
+      .md-achievement-shell{
+        position:relative;
+        overflow:hidden;
+        background:
+          radial-gradient(circle at 84% 10%, color-mix(in srgb, var(--md-bg-amber, #FFB627) 14%, transparent), transparent 32%),
+          linear-gradient(145deg, color-mix(in srgb, var(--md-bg-panel, #0F3D2A) 94%, #05091d), color-mix(in srgb, var(--md-bg-stadium, #071A14) 88%, #020617));
+      }
+      .md-achievement-shell::before{
+        content:"";
+        position:absolute;
+        inset:0;
+        pointer-events:none;
+        opacity:.22;
+        background-image:
+          linear-gradient(115deg, transparent 0 46%, rgba(255,255,255,.08) 47% 48%, transparent 49%),
+          linear-gradient(25deg, transparent 0 48%, rgba(255,255,255,.05) 49% 50%, transparent 51%);
+        background-size:3.6rem 3.6rem;
+      }
+      .md-achievement-collection-head,
+      .md-achievement-player-section{ position:relative; z-index:1; }
+      .md-achievement-grid{
+        display:grid;
+        grid-template-columns:repeat(auto-fit, minmax(min(100%, 14.8rem), 1fr));
+        gap:1rem;
+        align-items:start;
+      }
+      .md-achievement-card{
+        --ach-glow:#5ee7ff;
+        --ach-edge:#9ef3ff;
+        --ach-deep:#07152b;
+        --ach-rotate-x:0deg;
+        --ach-rotate-y:0deg;
+        --ach-index:0;
+        position:relative;
+        isolation:isolate;
+        width:100%;
+        min-height:22.5rem;
+        overflow:hidden;
+        border:1px solid color-mix(in srgb, var(--ach-edge) 72%, white);
+        border-radius:1.15rem;
+        padding:0;
+        color:#fff;
+        text-align:left;
+        cursor:pointer;
+        background:
+          radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--ach-glow) 42%, transparent), transparent 37%),
+          linear-gradient(160deg, color-mix(in srgb, var(--ach-edge) 20%, #101c3e) 0%, var(--ach-deep) 58%, #030712 100%);
+        box-shadow:
+          0 18px 38px rgba(0,0,0,.44),
+          0 0 0 1px color-mix(in srgb, var(--ach-edge) 25%, transparent) inset,
+          0 0 24px color-mix(in srgb, var(--ach-glow) 19%, transparent);
+        transform-style:preserve-3d;
+        transform:perspective(900px) rotateX(var(--ach-rotate-x)) rotateY(var(--ach-rotate-y));
+        transition:transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+        animation:mdCardPop .55s cubic-bezier(.22,1,.36,1) both;
+        animation-delay:calc(var(--ach-index) * 55ms);
+      }
+      .md-achievement-card[data-rarity="featured"]{ --ach-glow:#e7ff00; --ach-edge:#f7ff68; --ach-deep:#122149; }
+      .md-achievement-card[data-rarity="epic"]{ --ach-glow:#ff4fd8; --ach-edge:#75eaff; --ach-deep:#20103d; }
+      .md-achievement-card[data-rarity="legendary"]{ --ach-glow:#ffc85c; --ach-edge:#ffe9a6; --ach-deep:#341250; }
+      .md-achievement-card:focus-visible{
+        outline:3px solid color-mix(in srgb, var(--ach-edge) 84%, white);
+        outline-offset:4px;
+      }
+      @media (hover:hover) and (pointer:fine) {
+        .md-achievement-card:hover{
+          transform:perspective(900px) rotateX(var(--ach-rotate-x)) rotateY(var(--ach-rotate-y)) translateY(-7px) scale(1.015);
+          border-color:white;
+          box-shadow:0 26px 50px rgba(0,0,0,.52), 0 0 34px color-mix(in srgb, var(--ach-glow) 36%, transparent);
+        }
+      }
+      .md-achievement-card.is-open{
+        border-color:white;
+        animation:mdAchievementUnlock 1.7s ease-in-out infinite;
+      }
+      .md-achievement-card__pattern{
+        position:absolute;
+        inset:0;
+        z-index:-2;
+        opacity:.32;
+        background:
+          repeating-linear-gradient(125deg, transparent 0 16px, color-mix(in srgb, var(--ach-edge) 18%, transparent) 17px 18px),
+          radial-gradient(circle at 50% 46%, transparent 0 28%, color-mix(in srgb, var(--ach-edge) 20%, transparent) 29% 30%, transparent 31%);
+        mask-image:linear-gradient(to bottom, #000 0 78%, transparent);
+      }
+      .md-achievement-card__foil{
+        position:absolute;
+        z-index:4;
+        top:-42%;
+        left:-62%;
+        width:88%;
+        height:185%;
+        pointer-events:none;
+        opacity:.34;
+        mix-blend-mode:screen;
+        background:linear-gradient(90deg, transparent, rgba(255,255,255,.76), color-mix(in srgb, var(--ach-glow) 64%, transparent), transparent);
+        filter:blur(5px);
+        animation:mdAchievementFoil 4.8s ease-in-out infinite;
+      }
+      .md-achievement-card__top{
+        position:relative;
+        z-index:2;
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:.65rem;
+        padding:1rem 1rem 0;
+      }
+      .md-achievement-card__rating{
+        display:flex;
+        align-items:flex-end;
+        gap:.25rem;
+        font-family:'Oswald', sans-serif;
+        filter:drop-shadow(0 3px 8px rgba(0,0,0,.5));
+      }
+      .md-achievement-card__rating strong{
+        font-size:2.1rem;
+        line-height:.9;
+        letter-spacing:-.04em;
+      }
+      .md-achievement-card__rating small{
+        margin-bottom:.15rem;
+        font-size:.58rem;
+        letter-spacing:.16em;
+        color:rgba(255,255,255,.72);
+      }
+      .md-achievement-card__rarity{
+        border:1px solid color-mix(in srgb, var(--ach-edge) 55%, transparent);
+        border-radius:999px;
+        padding:.32rem .58rem;
+        background:rgba(2,6,23,.48);
+        color:color-mix(in srgb, var(--ach-edge) 86%, white);
+        font:600 .58rem/1 'Oswald', sans-serif;
+        letter-spacing:.15em;
+        text-transform:uppercase;
+        backdrop-filter:blur(8px);
+      }
+      .md-achievement-card__main{
+        position:relative;
+        z-index:2;
+        display:flex;
+        min-height:13.2rem;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        padding:.25rem 1rem .75rem;
+        text-align:center;
+      }
+      .md-achievement-card__aura{
+        position:absolute;
+        top:50%;
+        left:50%;
+        width:10.8rem;
+        height:10.8rem;
+        border-radius:50%;
+        transform:translate(-50%,-50%);
+        background:
+          conic-gradient(from 35deg, transparent, color-mix(in srgb, var(--ach-glow) 40%, transparent), transparent 38%, color-mix(in srgb, var(--ach-edge) 30%, transparent), transparent 74%);
+        filter:blur(1px);
+        animation:mdAchievementAura 4s ease-in-out infinite;
+        z-index:-1;
+      }
+      .md-achievement-card__emblem{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:7.1rem;
+        height:7.1rem;
+        border-radius:50%;
+        background:radial-gradient(circle, rgba(255,255,255,.2), rgba(255,255,255,.03) 63%, transparent 66%);
+        filter:drop-shadow(0 12px 18px rgba(0,0,0,.5));
+      }
+      .md-achievement-card__player{
+        display:block;
+        max-width:100%;
+        margin-top:.4rem;
+        overflow:hidden;
+        color:#fff;
+        font:700 1.18rem/1.15 'Oswald', sans-serif;
+        letter-spacing:.035em;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+        text-shadow:0 2px 9px rgba(0,0,0,.75);
+      }
+      .md-achievement-card__title{
+        position:relative;
+        z-index:2;
+        display:flex;
+        min-height:3.5rem;
+        align-items:center;
+        justify-content:center;
+        gap:.45rem;
+        margin:0 .85rem;
+        border-top:1px solid color-mix(in srgb, var(--ach-edge) 35%, transparent);
+        border-bottom:1px solid color-mix(in srgb, var(--ach-edge) 22%, transparent);
+        padding:.72rem .55rem;
+        color:#fff;
+        font:600 .87rem/1.25 'Inter', sans-serif;
+        text-align:center;
+        background:linear-gradient(90deg, transparent, rgba(2,6,23,.42), transparent);
+      }
+      .md-achievement-card__title-icon{ font-size:1.2rem; filter:drop-shadow(0 0 8px var(--ach-glow)); }
+      .md-achievement-card__reveal{
+        position:relative;
+        z-index:2;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:.35rem;
+        min-height:2.75rem;
+        padding:.7rem 1rem;
+        color:color-mix(in srgb, var(--ach-edge) 82%, white);
+        font:600 .6rem/1 'Oswald', sans-serif;
+        letter-spacing:.15em;
+        text-transform:uppercase;
+      }
+      .md-achievement-card__reveal svg{ transition:transform .25s ease; }
+      .md-achievement-card.is-open .md-achievement-card__reveal svg{ transform:rotate(90deg); }
+      .md-achievement-card__details{
+        position:relative;
+        z-index:3;
+        display:grid;
+        grid-template-rows:0fr;
+        opacity:0;
+        background:rgba(2,6,23,.76);
+        backdrop-filter:blur(12px);
+        transition:grid-template-rows .3s ease, opacity .25s ease;
+      }
+      .md-achievement-card__details-inner{ min-height:0; overflow:hidden; }
+      .md-achievement-card__details-copy{
+        display:block;
+        border-top:1px solid color-mix(in srgb, var(--ach-edge) 28%, transparent);
+        padding:.9rem 1rem 1rem;
+        color:rgba(255,255,255,.82);
+        font:.72rem/1.45 'Inter', sans-serif;
+      }
+      .md-achievement-card__details-copy strong{
+        display:block;
+        margin-bottom:.32rem;
+        color:color-mix(in srgb, var(--ach-edge) 82%, white);
+        font:600 .67rem/1 'Oswald', sans-serif;
+        letter-spacing:.14em;
+        text-transform:uppercase;
+      }
+      .md-achievement-card.is-open .md-achievement-card__details{ grid-template-rows:1fr; opacity:1; }
+      .md-achievement-count{
+        display:inline-flex;
+        align-items:center;
+        gap:.35rem;
+        border:1px solid color-mix(in srgb, var(--md-bg-amber, #FFB627) 34%, transparent);
+        border-radius:999px;
+        padding:.36rem .62rem;
+        color:var(--md-text-amber, #FFC85C);
+        background:color-mix(in srgb, var(--md-bg-amber, #FFB627) 10%, transparent);
+        font:600 .62rem/1 'Oswald', sans-serif;
+        letter-spacing:.09em;
+      }
+      @media (max-width: 520px) {
+        .md-achievement-shell{ margin-inline:-.25rem; padding:1rem !important; }
+        .md-achievement-grid{ grid-template-columns:minmax(0, 1fr); }
+        .md-achievement-card{ max-width:21rem; margin-inline:auto; min-height:22rem; }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .md-anim-slideIn, .md-anim-slideInDrawer, .md-anim-popIn, .md-anim-shake,
         .md-anim-bounce, .md-anim-marquee, .md-anim-pulse {
@@ -5874,6 +6152,147 @@ function computeStats(players, matches) {
   return Object.values(stats);
 }
 
+function getAchievementCardMeta(item, index = 0) {
+  const title = String(item?.title || "");
+  const milestone = Number(title.match(/Atingiu (\d+) gols/i)?.[1] || 0);
+
+  if (milestone >= 100) {
+    return {
+      rarity: "legendary",
+      rarityLabel: "Lendária",
+      rating: 99,
+      detail: "Marco máximo da coleção: 100 gols registados. Esta é uma das cartas mais raras da competição.",
+    };
+  }
+  if (milestone >= 70) {
+    return {
+      rarity: "epic",
+      rarityLabel: "Épica",
+      rating: 94 + Math.min(4, Math.floor((milestone - 70) / 10)),
+      detail: `Marca histórica de ${milestone} gols. A carta evolui de raridade a cada novo patamar alcançado.`,
+    };
+  }
+  if (milestone >= 40) {
+    return {
+      rarity: "featured",
+      rarityLabel: "Destaque",
+      rating: 88 + Math.floor((milestone - 40) / 10),
+      detail: `Conquista especial por chegar aos ${milestone} gols na competição.`,
+    };
+  }
+  if (milestone > 0) {
+    return {
+      rarity: milestone >= 20 ? "featured" : "standard",
+      rarityLabel: milestone >= 20 ? "Destaque" : "Standard",
+      rating: 80 + Math.min(7, Math.floor(milestone / 10) * 2),
+      detail: `Carta desbloqueada ao atingir ${milestone} gols. Continue a jogar para evoluir esta coleção.`,
+    };
+  }
+  if (/Artilheiro/i.test(title)) {
+    return {
+      rarity: "legendary",
+      rarityLabel: "Lendária",
+      rating: 97,
+      detail: "Carta dinâmica do líder de gols. Se outro jogador assumir a liderança, a carta muda de dono.",
+    };
+  }
+  if (/Maior goleada/i.test(title)) {
+    return {
+      rarity: "epic",
+      rarityLabel: "Épica",
+      rating: 95,
+      detail: "Recorde ativo da maior diferença de gols. Uma goleada superior atualiza automaticamente esta carta.",
+    };
+  }
+  if (/Melhor defesa/i.test(title)) {
+    return {
+      rarity: "featured",
+      rarityLabel: "Destaque",
+      rating: 92,
+      detail: "Carta dinâmica atribuída à defesa menos batida entre os jogadores que já disputaram partidas.",
+    };
+  }
+
+  return {
+    rarity: "standard",
+    rarityLabel: "Standard",
+    rating: 84 + (index % 4),
+    detail: "Conquista desbloqueada através do desempenho nas partidas do grupo.",
+  };
+}
+
+function AchievementCard({ item, playerName, emblemId, index, expanded, onToggle }) {
+  const meta = getAchievementCardMeta(item, index);
+
+  const updateTilt = (event) => {
+    if (event.pointerType !== "mouse") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const relativeX = (event.clientX - rect.left) / rect.width - 0.5;
+    const relativeY = (event.clientY - rect.top) / rect.height - 0.5;
+    event.currentTarget.style.setProperty("--ach-rotate-y", `${relativeX * 11}deg`);
+    event.currentTarget.style.setProperty("--ach-rotate-x", `${relativeY * -9}deg`);
+  };
+
+  const resetTilt = (event) => {
+    event.currentTarget.style.setProperty("--ach-rotate-y", "0deg");
+    event.currentTarget.style.setProperty("--ach-rotate-x", "0deg");
+  };
+
+  return (
+    <button
+      type="button"
+      className={`md-achievement-card ${expanded ? "is-open" : ""}`}
+      data-rarity={meta.rarity}
+      data-achievement-card="true"
+      aria-expanded={expanded}
+      aria-label={`${item.title}, carta ${meta.rarityLabel} de ${playerName}. ${expanded ? "Fechar detalhes" : "Abrir detalhes"}`}
+      onClick={onToggle}
+      onPointerMove={updateTilt}
+      onPointerLeave={resetTilt}
+      style={{ "--ach-index": index } as React.CSSProperties}
+    >
+      <span className="md-achievement-card__pattern" aria-hidden="true" />
+      <span className="md-achievement-card__foil" aria-hidden="true" />
+      <span className="md-achievement-card__top">
+        <span className="md-achievement-card__rating">
+          <strong>{meta.rating}</strong>
+          <small>OVR</small>
+        </span>
+        <span className="md-achievement-card__rarity">{meta.rarityLabel}</span>
+      </span>
+
+      <span className="md-achievement-card__main">
+        <span className="md-achievement-card__aura" aria-hidden="true" />
+        <span className="md-achievement-card__emblem">
+          <EmblemBadge emblemId={emblemId} size={78} />
+        </span>
+        <span className="md-achievement-card__player md-name-animated" data-name-animation="enabled">
+          {playerName}
+        </span>
+      </span>
+
+      <span className="md-achievement-card__title">
+        <span className="md-achievement-card__title-icon" aria-hidden="true">{item.icon || "🏅"}</span>
+        <span>{item.title}</span>
+      </span>
+
+      <span className="md-achievement-card__reveal">
+        {expanded ? "Detalhes revelados" : "Toque para revelar"}
+        <ChevronRight size={14} aria-hidden="true" />
+      </span>
+
+      <span className="md-achievement-card__details" aria-hidden={!expanded}>
+        <span className="md-achievement-card__details-inner">
+          <span className="md-achievement-card__details-copy">
+            <strong>Conquista desbloqueada</strong>
+            {meta.detail}
+          </span>
+        </span>
+      </span>
+    </button>
+  );
+}
+
 /* ---------------- Standings ---------------- */
 
 function StatCard({ icon, label, value, sub, cls }) {
@@ -6224,6 +6643,7 @@ function Standings({ players, matches }) {
   const playersWithAchievements = players
     .map((p) => p.name)
     .filter((name) => Array.isArray(achievementsByPlayer[name]) && achievementsByPlayer[name].length > 0);
+  const [openAchievement, setOpenAchievement] = useState("");
 
   const trophyStyles = [
     { color: "text-amber-300", glow: "shadow-[0_0_18px_rgba(255,198,92,0.35)]", label: "OURO" },
@@ -6352,22 +6772,62 @@ function Standings({ players, matches }) {
         })}
       </div>
 
-      <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
-        <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">CONQUISTAS</h3>
-        {achievements.length === 0 && <p className="text-sm md-text-muted">Ainda sem conquistas desbloqueadas.</p>}
-        <div className="space-y-3">
-          {playersWithAchievements.map((playerName) => (
-            <div key={`ach-user-${playerName}`} className="rounded-lg border border-white/10 bg-black/10 px-3 py-3">
-              <p className="font-oswald text-sm md-text-amber mb-2">{playerName}</p>
-              <div className="space-y-1.5">
-                {achievementsByPlayer[playerName].map((item, idx) => (
-                  <p key={`ach-${playerName}-${idx}`} className="text-sm md-text-muted">
-                    {item.icon} {item.title}
-                  </p>
-                ))}
-              </div>
-            </div>
-          ))}
+      <div className="md-achievement-shell md-border md-border-line rounded-2xl p-4 sm:p-5">
+        <div className="md-achievement-collection-head flex items-start justify-between gap-3 mb-5">
+          <div>
+            <p className="font-oswald text-xs tracking-[0.22em] md-text-amber">DREAM TEAM</p>
+            <h3 className="font-oswald text-xl md-text-bone mt-1">COLEÇÃO DE CONQUISTAS</h3>
+            <p className="text-xs md-text-muted mt-1">Cartas dinâmicas: toque para revelar a história de cada feito.</p>
+          </div>
+          <span className="md-achievement-count shrink-0">
+            <Trophy size={13} aria-hidden="true" /> {achievements.length} {achievements.length === 1 ? "CARTA" : "CARTAS"}
+          </span>
+        </div>
+
+        {achievements.length === 0 && (
+          <div className="relative z-[1] rounded-xl border border-dashed border-white/20 bg-black/15 px-4 py-8 text-center">
+            <Trophy size={34} className="mx-auto md-text-muted opacity-60" />
+            <p className="font-oswald md-text-bone mt-3">A coleção ainda está vazia</p>
+            <p className="text-sm md-text-muted mt-1">Jogue partidas para desbloquear a primeira carta.</p>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          {playersWithAchievements.map((playerName) => {
+            const playerCards = achievementsByPlayer[playerName];
+            const emblemId = getEmblemIdByName(players, playerName);
+            return (
+              <section key={`ach-user-${playerName}`} className="md-achievement-player-section">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <NameWithEmblem
+                    name={playerName}
+                    emblemId={emblemId}
+                    size={42}
+                    textClassName="font-oswald text-base md-text-bone"
+                  />
+                  <span className="text-xs font-oswald md-text-muted">
+                    {playerCards.length} {playerCards.length === 1 ? "CONQUISTA" : "CONQUISTAS"}
+                  </span>
+                </div>
+                <div className="md-achievement-grid">
+                  {playerCards.map((item, idx) => {
+                    const cardId = `${playerName}-${idx}-${item.title}`;
+                    return (
+                      <AchievementCard
+                        key={cardId}
+                        item={item}
+                        playerName={playerName}
+                        emblemId={emblemId}
+                        index={idx}
+                        expanded={openAchievement === cardId}
+                        onToggle={() => setOpenAchievement((current) => current === cardId ? "" : cardId)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
       </div>
     </div>
