@@ -780,6 +780,82 @@ async function shrinkImageDataUrl(dataUrl, maxChars = 120 * 1024) {
   return best;
 }
 
+const FIRESTORE_GROUP_SAFE_CHARS = 820 * 1024;
+const MAX_GROUP_BACKUPS = 3;
+
+async function prepareGroupForFirestore(data) {
+  let prepared = normalizeGroupData(data);
+  prepared = {
+    ...prepared,
+    backups: (prepared.backups || []).slice(0, MAX_GROUP_BACKUPS),
+  };
+
+  let estimatedSize = estimateJsonSize(prepared);
+  while (estimatedSize > FIRESTORE_GROUP_SAFE_CHARS && prepared.backups.length > 1) {
+    prepared = { ...prepared, backups: prepared.backups.slice(0, -1) };
+    estimatedSize = estimateJsonSize(prepared);
+  }
+
+  if (estimatedSize <= FIRESTORE_GROUP_SAFE_CHARS) return prepared;
+
+  const mediaTargets = [96 * 1024, 72 * 1024, 48 * 1024, 32 * 1024];
+  for (const targetChars of mediaTargets) {
+    let changed = false;
+    const nextMatches = [];
+
+    for (const match of prepared.matches || []) {
+      const nextMedia = [];
+      for (const item of match?.media || []) {
+        const mediaItem = String(item || "");
+        if (mediaItem.startsWith("data:image/") && mediaItem.length > targetChars) {
+          try {
+            const compacted = await shrinkImageDataUrl(mediaItem, targetChars);
+            nextMedia.push(compacted);
+            if (compacted.length < mediaItem.length) changed = true;
+          } catch {
+            nextMedia.push(mediaItem);
+          }
+        } else {
+          nextMedia.push(mediaItem);
+        }
+      }
+      nextMatches.push({ ...match, media: nextMedia });
+    }
+
+    const nextMessages = [];
+    for (const message of prepared.messages || []) {
+      const mediaItem = String(message?.mediaDataUrl || "");
+      if (mediaItem.startsWith("data:image/") && mediaItem.length > targetChars) {
+        try {
+          const compacted = await shrinkImageDataUrl(mediaItem, targetChars);
+          nextMessages.push({ ...message, mediaDataUrl: compacted });
+          if (compacted.length < mediaItem.length) changed = true;
+        } catch {
+          nextMessages.push(message);
+        }
+      } else {
+        nextMessages.push(message);
+      }
+    }
+
+    if (changed) {
+      prepared = {
+        ...prepared,
+        matches: nextMatches,
+        messages: nextMessages,
+      };
+    }
+
+    estimatedSize = estimateJsonSize(prepared);
+    if (estimatedSize <= FIRESTORE_GROUP_SAFE_CHARS) return prepared;
+  }
+
+  if (prepared.backups.length) {
+    prepared = { ...prepared, backups: [] };
+  }
+  return prepared;
+}
+
 function uniqueStringList(values) {
   return Array.from(
     new Set(
@@ -791,6 +867,7 @@ function uniqueStringList(values) {
 }
 
 const ADMIN_UID = "jFgg40d4ZggGiDishehR9Kfj10K2";
+let lastStorageError = "";
 
 /* ---------------- storage helpers (defensive: shared storage on
    this platform has been flaky, so every call is wrapped and the
@@ -814,12 +891,16 @@ async function storageGet(key, shared) {
   }
 }
 async function storageSet(key, value, shared) {
+  lastStorageError = "";
   try {
     if (!shared) {
       window.localStorage.setItem(key, value);
       return true;
     }
-    if (!db) return false;
+    if (!db) {
+      lastStorageError = "firebase-unavailable";
+      return false;
+    }
     const ref = doc(db, "sharedStorage", encodeURIComponent(key));
     const now = Date.now();
     const keyStr = String(key || "");
@@ -848,9 +929,30 @@ async function storageSet(key, value, shared) {
     await setDoc(ref, { value, updatedAt: now }, { merge: true });
     return true;
   } catch (e) {
+    const error = e as any;
+    lastStorageError = `${String(error?.code || "storage-error")}:${String(error?.message || error || "")}`;
     console.error("storageSet", e);
     return false;
   }
+}
+
+function getStorageFailureMessage() {
+  const reason = String(lastStorageError || "").toLowerCase();
+  if (reason.includes("permission-denied") || reason.includes("unauthenticated")) {
+    return "O Firebase recusou a sincronização. Atualize a app e tente novamente.";
+  }
+  if (
+    reason.includes("resource-exhausted") ||
+    reason.includes("too large") ||
+    reason.includes("maximum") ||
+    reason.includes("longer than")
+  ) {
+    return "O histórico do grupo ficou demasiado grande para sincronizar. A app compactou os dados; tente novamente.";
+  }
+  if (reason.includes("firebase-unavailable") || reason.includes("network")) {
+    return "Não foi possível ligar ao armazenamento. Verifique a internet e tente novamente.";
+  }
+  return "Não foi possível sincronizar o resultado agora. Tente novamente dentro de alguns segundos.";
 }
 
 function genCode() {
@@ -1068,7 +1170,7 @@ function appendBackupSnapshot(data, reason, actor) {
   const current = Array.isArray(data?.backups) ? data.backups : [];
   return {
     ...data,
-    backups: [entry, ...current].slice(0, 12),
+    backups: [entry, ...current].slice(0, MAX_GROUP_BACKUPS),
   };
 }
 
@@ -1120,7 +1222,7 @@ function normalizeGroupData(data) {
   const normalizedBackups = (data?.backups || [])
     .map(normalizeBackupEntry)
     .sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0))
-    .slice(0, 12);
+    .slice(0, MAX_GROUP_BACKUPS);
 
   return {
     ...data,
@@ -3191,9 +3293,10 @@ export default function App() {
       options?.backupReason,
       options?.backupActor || myName || "Sistema"
     );
-    setGroupData(withBackup);
-    cacheGroupLocally(groupCode, withBackup);
-    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(withBackup), true);
+    const preparedData = await prepareGroupForFirestore(withBackup);
+    setGroupData(preparedData);
+    cacheGroupLocally(groupCode, preparedData);
+    const persisted = await storageSet(`group:${groupCode}`, JSON.stringify(preparedData), true);
     setStorageOk(Boolean(persisted));
     return Boolean(persisted);
   };
@@ -4063,7 +4166,7 @@ export default function App() {
                     }
 
                     if (!ok) {
-                      return { error: "Nao foi possivel salvar a partida agora. Tente novamente com uma imagem menor." };
+                      return { error: getStorageFailureMessage() };
                     }
                     pushToast({
                       title: "Resultado registado",
