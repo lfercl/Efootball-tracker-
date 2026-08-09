@@ -5411,6 +5411,388 @@ function ResultPhotoLightbox({ src, onClose }) {
   );
 }
 
+
+function getProvocativeResultCopy(match) {
+  const scoreA = Number(match?.scoreA || 0);
+  const scoreB = Number(match?.scoreB || 0);
+  const difference = Math.abs(scoreA - scoreB);
+  const isDraw = scoreA === scoreB;
+  const winner = isDraw ? "" : (scoreA > scoreB ? match.playerA : match.playerB);
+  const loser = isDraw ? "" : (scoreA > scoreB ? match.playerB : match.playerA);
+  const seedSource = String(match?.id || `${match?.playerA}-${match?.playerB}-${scoreA}-${scoreB}`);
+  const seed = Array.from(seedSource).reduce((total, char) => total + char.charCodeAt(0), 0);
+
+  const phrases = isDraw
+    ? [
+        "MUITA CONVERSA, NENHUM DONO.",
+        "EMPATE: FICARAM COM MEDO DE PERDER?",
+        "A REVANCHE DECIDE QUEM MANDA.",
+      ]
+    : difference >= 5
+      ? [
+          "ISTO NÃO FOI JOGO. FOI UMA AULA.",
+          "PODE DESLIGAR O COMANDO.",
+          "O COMANDO FOI DE UM SÓ.",
+        ]
+      : difference >= 3
+        ? [
+            "A REVANCHE VAI PRECISAR DE CORAGEM.",
+            "HOJE O JOGO TEVE DONO.",
+            "O PLACAR DISSE TUDO.",
+          ]
+        : difference >= 2
+          ? [
+              "TENTOU. NÃO CHEGOU.",
+              "SEM DESCULPAS. SÓ PLACAR.",
+              "VOLTA MAIS FORTE NA PRÓXIMA.",
+            ]
+          : [
+              "FOI POR POUCO. MAS PERDER É PERDER.",
+              "UM GOL BASTOU PARA CALAR.",
+              "QUASE NÃO CONTA NA TABELA.",
+            ];
+
+  return {
+    phrase: phrases[seed % phrases.length],
+    kicker: isDraw ? "NINGUÉM MANDA AINDA" : `${winner} MANDOU NO JOGO`,
+    winner,
+    loser,
+    isDraw,
+  };
+}
+
+function drawResultGifEmblem3D(ctx, image, name, x, y, size, progress, accent, isWinner) {
+  const pulse = 1 + Math.sin(progress * Math.PI * 2) * (isWinner ? .035 : .018);
+  const yaw = Math.cos(progress * Math.PI * 2) * .12;
+  const drawWidth = size * pulse * (1 - Math.abs(yaw) * .22);
+  const drawHeight = size * pulse;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.sin(progress * Math.PI * 2) * (isWinner ? .025 : -.018));
+
+  const halo = ctx.createRadialGradient(0, 0, size * .18, 0, 0, size * .78);
+  halo.addColorStop(0, `${accent}55`);
+  halo.addColorStop(.58, `${accent}20`);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * .82, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let ring = 5; ring >= 0; ring -= 1) {
+    ctx.beginPath();
+    ctx.ellipse(ring * .7, ring * 1.1, size * .62, size * .62, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = ring === 0 ? `${accent}dd` : `rgba(0,0,0,${.18 + ring * .06})`;
+    ctx.lineWidth = ring === 0 ? 3 : 5;
+    ctx.stroke();
+  }
+
+  if (image) {
+    const ratio = Math.min(drawWidth / image.naturalWidth, drawHeight / image.naturalHeight);
+    const width = image.naturalWidth * ratio;
+    const height = image.naturalHeight * ratio;
+
+    for (let layer = 10; layer >= 1; layer -= 1) {
+      ctx.globalAlpha = .18 + (10 - layer) * .025;
+      ctx.filter = "brightness(.25) saturate(1.5)";
+      ctx.drawImage(image, -width / 2 + layer * .7, -height / 2 + layer * 1.05, width, height);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.filter = "drop-shadow(0 13px 11px rgba(0,0,0,.76)) saturate(1.2) contrast(1.08)";
+    ctx.drawImage(image, -width / 2, -height / 2, width, height);
+    ctx.filter = "none";
+
+    const shimmer = (progress * 1.35) % 1;
+    const shine = ctx.createLinearGradient(-drawWidth / 2, 0, drawWidth / 2, 0);
+    shine.addColorStop(0, "rgba(255,255,255,0)");
+    shine.addColorStop(Math.max(0, shimmer - .1), "rgba(255,255,255,0)");
+    shine.addColorStop(shimmer, "rgba(255,255,255,.46)");
+    shine.addColorStop(Math.min(1, shimmer + .12), "rgba(255,255,255,0)");
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = .52;
+    ctx.fillStyle = shine;
+    ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  } else {
+    ctx.fillStyle = "#07101f";
+    ctx.beginPath();
+    ctx.arc(0, 0, size * .48, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = accent;
+    ctx.font = "700 38px Oswald, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials(name), 0, 1);
+  }
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.filter = "none";
+}
+
+function drawProvocativeResultGifFrame(ctx, payload, progress) {
+  const { match, emblemAImage, emblemBImage, backgroundImage, copy } = payload;
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  const scoreA = Number(match.scoreA || 0);
+  const scoreB = Number(match.scoreB || 0);
+  const aWon = scoreA > scoreB;
+  const bWon = scoreB > scoreA;
+  const gold = "#FFD84D";
+  const electric = "#30D9FF";
+  const hot = "#FF3D81";
+
+  const bg = ctx.createLinearGradient(0, 0, width, height);
+  bg.addColorStop(0, "#050814");
+  bg.addColorStop(.52, "#10112c");
+  bg.addColorStop(1, "#02040c");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  if (backgroundImage) {
+    const cover = Math.max(width / backgroundImage.naturalWidth, height / backgroundImage.naturalHeight);
+    const imageWidth = backgroundImage.naturalWidth * cover;
+    const imageHeight = backgroundImage.naturalHeight * cover;
+    ctx.save();
+    ctx.globalAlpha = .18;
+    ctx.filter = "blur(5px) saturate(1.35) contrast(1.15)";
+    ctx.drawImage(backgroundImage, (width - imageWidth) / 2, (height - imageHeight) / 2, imageWidth, imageHeight);
+    ctx.restore();
+  }
+
+  // Stadium spotlights and animated scan.
+  for (let light = 0; light < 5; light += 1) {
+    const originX = 35 + light * 88;
+    const sweep = Math.sin(progress * Math.PI * 2 + light) * 38;
+    const beam = ctx.createLinearGradient(originX, 0, originX + sweep, 430);
+    beam.addColorStop(0, light % 2 ? "rgba(48,217,255,.2)" : "rgba(255,216,77,.2)");
+    beam.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(originX - 22, 0);
+    ctx.lineTo(originX + 22, 0);
+    ctx.lineTo(originX + sweep + 88, 450);
+    ctx.lineTo(originX + sweep - 88, 450);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,.08)";
+  ctx.lineWidth = 1;
+  for (let line = 0; line < 9; line += 1) {
+    ctx.beginPath();
+    ctx.moveTo(0, 490 + line * 24);
+    ctx.lineTo(width, 490 + line * 24);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.ellipse(width / 2, 605, 178, 86, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Premium cut-corner frame.
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(30, 15);
+  ctx.lineTo(width - 30, 15);
+  ctx.lineTo(width - 15, 30);
+  ctx.lineTo(width - 15, height - 30);
+  ctx.lineTo(width - 30, height - 15);
+  ctx.lineTo(30, height - 15);
+  ctx.lineTo(15, height - 30);
+  ctx.lineTo(15, 30);
+  ctx.closePath();
+  const edge = ctx.createLinearGradient(15, 15, width - 15, height - 15);
+  edge.addColorStop(0, gold);
+  edge.addColorStop(.34, "#FFFFFF");
+  edge.addColorStop(.64, electric);
+  edge.addColorStop(1, hot);
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = "rgba(48,217,255,.42)";
+  ctx.shadowBlur = 14;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255,255,255,.68)";
+  ctx.font = "700 10px Inter, sans-serif";
+  ctx.fillText("EFOOTBALL RIVALS • RESULTADO OFICIAL", width / 2, 48);
+  ctx.fillStyle = gold;
+  ctx.font = "700 13px Oswald, sans-serif";
+  ctx.fillText(copy.kicker, width / 2, 76);
+
+  drawResultGifEmblem3D(ctx, emblemAImage, match.playerA, 110, 183, 112, progress, aWon ? gold : electric, aWon);
+  drawResultGifEmblem3D(ctx, emblemBImage, match.playerB, 310, 183, 112, progress, bWon ? gold : hot, bWon);
+
+  ctx.shadowColor = "rgba(0,0,0,.86)";
+  ctx.shadowBlur = 9;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "700 18px Oswald, sans-serif";
+  drawGifWrappedText(ctx, String(match.playerA || "Jogador A"), 110, 260, 164, 21, 2);
+  drawGifWrappedText(ctx, String(match.playerB || "Jogador B"), 310, 260, 164, 21, 2);
+  ctx.shadowColor = "transparent";
+
+  const scorePulse = 1 + Math.sin(progress * Math.PI * 2) * .045;
+  ctx.save();
+  ctx.translate(width / 2, 353);
+  ctx.scale(scorePulse, scorePulse);
+  ctx.fillStyle = "rgba(0,0,0,.52)";
+  drawGifRoundedRect(ctx, -157, -53, 314, 106, 20);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.16)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = aWon ? gold : "#FFFFFF";
+  ctx.font = "700 76px Oswald, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(String(scoreA), -35, 28);
+  ctx.fillStyle = "rgba(255,255,255,.52)";
+  ctx.font = "700 29px Oswald, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("X", 0, 18);
+  ctx.fillStyle = bWon ? gold : "#FFFFFF";
+  ctx.font = "700 76px Oswald, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(String(scoreB), 35, 28);
+  ctx.restore();
+
+  drawGifRoundedRect(ctx, 37, 432, width - 74, 146, 17);
+  const panel = ctx.createLinearGradient(37, 432, width - 37, 578);
+  panel.addColorStop(0, "rgba(3,7,18,.9)");
+  panel.addColorStop(1, "rgba(17,18,48,.92)");
+  ctx.fillStyle = panel;
+  ctx.shadowColor = "rgba(0,0,0,.62)";
+  ctx.shadowBlur = 15;
+  ctx.shadowOffsetY = 8;
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = `${copy.isDraw ? electric : gold}99`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = copy.isDraw ? electric : gold;
+  ctx.font = "700 11px Oswald, sans-serif";
+  ctx.fillText("SEM FILTRO • PÓS-JOGO", width / 2, 464);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "700 25px Oswald, sans-serif";
+  drawGifWrappedText(ctx, copy.phrase, width / 2, 498, width - 104, 29, 3);
+
+  const scanX = -120 + progress * (width + 240);
+  const scan = ctx.createLinearGradient(scanX - 70, 0, scanX + 70, 0);
+  scan.addColorStop(0, "rgba(255,255,255,0)");
+  scan.addColorStop(.5, "rgba(255,255,255,.2)");
+  scan.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = scan;
+  ctx.fillRect(15, 15, width - 30, height - 30);
+  ctx.globalCompositeOperation = "source-over";
+
+  for (let particle = 0; particle < 26; particle += 1) {
+    const angle = particle * 2.399 + progress * Math.PI * 2;
+    const radius = 95 + (particle % 7) * 24;
+    const px = width / 2 + Math.cos(angle) * radius;
+    const py = 350 + Math.sin(angle) * radius * .82;
+    ctx.globalAlpha = .22 + (particle % 4) * .13;
+    ctx.fillStyle = particle % 3 === 0 ? gold : (particle % 2 ? electric : hot);
+    ctx.beginPath();
+    ctx.arc(px, py, 1.2 + particle % 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255,255,255,.82)";
+  ctx.font = "600 11px Inter, sans-serif";
+  ctx.fillText("PARTILHA O PLACAR. CHAMA A REVANCHE.", width / 2, 626);
+  ctx.fillStyle = "rgba(255,255,255,.48)";
+  ctx.font = "600 9px Inter, sans-serif";
+  ctx.fillText(new Date(Number(match.ts || Date.now())).toLocaleDateString("pt-PT"), width / 2, 651);
+
+  const vignette = ctx.createRadialGradient(width / 2, height / 2, 180, width / 2, height / 2, 430);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,.44)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+}
+
+async function buildProvocativeResultGifFile(match, players) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 420;
+  canvas.height = 700;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Não foi possível preparar o GIF do resultado.");
+
+  const emblemA = EMBLEM_MAP[getEmblemIdByName(players, match.playerA)];
+  const emblemB = EMBLEM_MAP[getEmblemIdByName(players, match.playerB)];
+  let emblemAImage = null;
+  let emblemBImage = null;
+  let backgroundImage = null;
+
+  await Promise.all([
+    emblemA?.url ? loadImage(emblemA.url).then((image) => { emblemAImage = image; }).catch(() => {}) : Promise.resolve(),
+    emblemB?.url ? loadImage(emblemB.url).then((image) => { emblemBImage = image; }).catch(() => {}) : Promise.resolve(),
+    Array.isArray(match.media) && match.media[0]
+      ? loadImage(String(match.media[0])).then((image) => { backgroundImage = image; }).catch(() => {})
+      : Promise.resolve(),
+  ]);
+
+  const copy = getProvocativeResultCopy(match);
+  const gif = GIFEncoder();
+  const frameCount = 16;
+  let palette = null;
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    drawProvocativeResultGifFrame(ctx, { match, emblemAImage, emblemBImage, backgroundImage, copy }, frame / frameCount);
+    const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    if (!palette) palette = quantize(rgba, 192);
+    const indexed = applyPalette(rgba, palette);
+    const frameOptions = { delay: 95, repeat: 0 };
+    if (frame === 0) frameOptions.palette = palette;
+    gif.writeFrame(indexed, canvas.width, canvas.height, frameOptions);
+    if (frame % 3 === 2) await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+
+  gif.finish();
+  const bytes = gif.bytes();
+  const slug = `${match.playerA}-${match.playerB}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return new File([bytes], `resultado-provocador-${slug || "partida"}.gif`, { type: "image/gif" });
+}
+
+async function shareProvocativeResultGif(match, players) {
+  const file = await buildProvocativeResultGifFile(match, players);
+  const copy = getProvocativeResultCopy(match);
+  const scoreText = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB}`;
+
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({
+      title: "Resultado sem filtro",
+      text: `${scoreText} — ${copy.phrase}`,
+      files: [file],
+    });
+    return "shared";
+  }
+
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1800);
+  return "downloaded";
+}
+
 function ResultsManagement({
   players,
   matches,
@@ -5432,6 +5814,7 @@ function ResultsManagement({
   const [scoreB, setScoreB] = useState(0);
   const [mediaInputByMatch, setMediaInputByMatch] = useState({});
   const [previewPhoto, setPreviewPhoto] = useState(null);
+  const [gifShareStateByMatch, setGifShareStateByMatch] = useState({});
 
   const shareMatch = async (match) => {
     const baseText = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB} | Matchday Ledger`;
@@ -5474,6 +5857,38 @@ function ResultsManagement({
       : baseText;
     const wa = `https://wa.me/?text=${encodeURIComponent(textWithLink)}`;
     window.open(wa, "_blank", "noopener,noreferrer");
+  };
+
+  const shareMatchGif = async (match) => {
+    if (gifShareStateByMatch[match.id] === "loading") return;
+    setGifShareStateByMatch((current) => ({ ...current, [match.id]: "loading" }));
+
+    try {
+      const result = await shareProvocativeResultGif(match, players);
+      setGifShareStateByMatch((current) => ({ ...current, [match.id]: result }));
+      window.setTimeout(() => {
+        setGifShareStateByMatch((current) => ({ ...current, [match.id]: "idle" }));
+      }, 2600);
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.error("Falha ao partilhar GIF provocador do resultado", error);
+        setGifShareStateByMatch((current) => ({ ...current, [match.id]: "error" }));
+        window.setTimeout(() => {
+          setGifShareStateByMatch((current) => ({ ...current, [match.id]: "idle" }));
+        }, 2800);
+      } else {
+        setGifShareStateByMatch((current) => ({ ...current, [match.id]: "idle" }));
+      }
+    }
+  };
+
+  const getResultGifLabel = (matchId) => {
+    const state = gifShareStateByMatch[matchId] || "idle";
+    if (state === "loading") return "A GERAR GIF...";
+    if (state === "shared") return "GIF PARTILHADO";
+    if (state === "downloaded") return "GIF GUARDADO";
+    if (state === "error") return "TENTAR GIF NOVAMENTE";
+    return "GIF PROVOCADOR";
   };
 
   const startEdit = (match) => {
@@ -5643,10 +6058,19 @@ function ResultsManagement({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <button onClick={() => startEdit(match)} className="md-btn-amber rounded-lg py-2 text-xs font-oswald md-touch-target">EDITAR</button>
                     <button onClick={() => shareMatch(match)} className="md-step-btn rounded-lg py-2 text-xs font-oswald flex items-center justify-center gap-1 md-touch-target">
                       <Share2 size={12} /> PARTILHAR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => shareMatchGif(match)}
+                      disabled={gifShareStateByMatch[match.id] === "loading"}
+                      className="md-step-btn rounded-lg py-2 text-xs font-oswald flex items-center justify-center gap-1 md-touch-target disabled:opacity-60"
+                      aria-label={`Partilhar GIF provocador do resultado ${match.playerA} ${match.scoreA} a ${match.scoreB} ${match.playerB}`}
+                    >
+                      <Flame size={12} /> {getResultGifLabel(match.id)}
                     </button>
                     <button
                       onClick={async () => {
