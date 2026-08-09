@@ -7,13 +7,217 @@ body { min-width: 320px; }
 * { box-sizing: border-box; }
 button, input { font: inherit; }
 
-/* Premium 3D treatment shared by every club and country emblem. */
-.md-emblem-3d { --emblem-size:32px; position:relative; isolation:isolate; display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; width:var(--emblem-size); height:var(--emblem-size); overflow:hidden; border:1px solid rgba(255,255,255,.72); border-radius:50%; vertical-align:middle; background:radial-gradient(circle at 34% 24%,#fff 0 12%,#e8edf0 28%,#9ba6ad 58%,#343b40 82%,#111518 100%); box-shadow:0 calc(var(--emblem-size)*.14) calc(var(--emblem-size)*.24) rgba(0,0,0,.48),inset 0 2px 2px rgba(255,255,255,.9),inset 0 -3px 5px rgba(0,0,0,.45); transform:perspective(240px) rotateX(5deg); transition:transform 180ms ease,filter 180ms ease; }
-.md-emblem-3d::before { content:""; position:absolute; z-index:0; inset:8%; border:1px solid rgba(20,24,26,.38); border-radius:inherit; background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(221,226,229,.84)); box-shadow:inset 1px 1px 2px rgba(255,255,255,.95),inset -2px -2px 4px rgba(29,36,40,.3); }
-.md-emblem-3d__image { position:relative; z-index:1; display:block; width:72%; height:72%; object-fit:contain; filter:drop-shadow(0 calc(var(--emblem-size)*.075) calc(var(--emblem-size)*.055) rgba(0,0,0,.5)); }
-.md-emblem-3d__shine { position:absolute; z-index:2; top:7%; left:17%; width:60%; height:34%; pointer-events:none; border-radius:50%; background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(255,255,255,0)); transform:rotate(-10deg); mix-blend-mode:screen; }
-.md-emblem-3d:hover { transform:translateY(-1px) perspective(240px) rotateX(1deg) scale(1.04); filter:saturate(1.1) brightness(1.05); }
-@media (prefers-reduced-motion:reduce){.md-emblem-3d{transition:none}}
+/* Professional crest treatment shared by every club and country emblem. */
+.md-emblem-3d {
+  --emblem-size: 32px;
+  --emblem-accent: #e2b94f;
+  --emblem-accent-deep: #17100a;
+  --emblem-glow: #76551c;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--emblem-size);
+  height: var(--emblem-size);
+  overflow: visible;
+  border: 0;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: transparent;
+  perspective: 280px;
+  transform: translateZ(0) rotateX(4deg);
+  transform-style: preserve-3d;
+  transition: transform 220ms cubic-bezier(.2,.8,.2,1), filter 220ms ease;
+}
+
+.md-emblem-3d::before {
+  position: absolute;
+  z-index: 0;
+  inset: 3%;
+  border: 1px solid color-mix(in srgb, var(--emblem-accent) 72%, #fff 28%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255,255,255,.96) 0 3%, transparent 4%),
+    conic-gradient(
+      from 215deg,
+      color-mix(in srgb, var(--emblem-accent-deep) 72%, #000),
+      color-mix(in srgb, var(--emblem-accent) 60%, #fff) 14%,
+      #fff2bd 24%,
+      color-mix(in srgb, var(--emblem-accent) 86%, #583400) 39%,
+      color-mix(in srgb, var(--emblem-accent-deep) 76%, #000) 55%,
+      #f8e7ad 72%,
+      color-mix(in srgb, var(--emblem-accent) 74%, #422500) 88%,
+      color-mix(in srgb, var(--emblem-accent-deep) 76%, #000)
+    );
+  box-shadow:
+    0 calc(var(--emblem-size) * .12) calc(var(--emblem-size) * .2) rgba(0,0,0,.52),
+    0 0 calc(var(--emblem-size) * .18) color-mix(in srgb, var(--emblem-glow) 32%, transparent),
+    inset 0 2px 2px rgba(255,255,255,.78),
+    inset 0 -4px 6px rgba(0,0,0,.62);
+  content: "";
+  transform: translate3d(2%, 5%, -8px) rotate(-4deg);
+}
+
+.md-emblem-3d::after {
+  position: absolute;
+  z-index: 1;
+  inset: 11%;
+  border: 1px solid rgba(255,255,255,.34);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 26%, rgba(255,255,255,.18), transparent 30%),
+    radial-gradient(circle, color-mix(in srgb, var(--emblem-accent-deep) 72%, #111), #050505 76%);
+  box-shadow:
+    inset 1px 2px 4px rgba(255,255,255,.16),
+    inset -3px -4px 7px rgba(0,0,0,.72);
+  content: "";
+  transform: translateZ(-3px);
+}
+
+.md-emblem-3d__fallback {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 64%;
+  height: 64%;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--emblem-accent) 76%, #fff);
+  font: 700 calc(var(--emblem-size) * .22)/1 'Oswald', sans-serif;
+  letter-spacing: -.04em;
+  text-shadow: 0 2px 5px rgba(0,0,0,.8);
+}
+
+.md-emblem-3d__depth,
+.md-emblem-3d__image {
+  position: absolute;
+  display: block;
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+  transform-origin: 50% 50%;
+}
+
+.md-emblem-3d__depth {
+  z-index: 3;
+  opacity: .62;
+  filter: brightness(.12) saturate(1.7) blur(.35px);
+  transform: translate3d(5%, 8%, -2px) scale(.99);
+}
+
+.md-emblem-3d__image {
+  z-index: 4;
+  filter:
+    drop-shadow(0 calc(var(--emblem-size) * .075) calc(var(--emblem-size) * .045) rgba(0,0,0,.82))
+    drop-shadow(0 0 calc(var(--emblem-size) * .055) rgba(255,255,255,.2))
+    saturate(1.12)
+    contrast(1.08);
+  transform: translate3d(0, -2%, 5px);
+  transition: filter 220ms ease, transform 260ms cubic-bezier(.2,.8,.2,1);
+}
+
+.md-emblem-3d__shine {
+  position: absolute;
+  z-index: 5;
+  top: 5%;
+  left: 12%;
+  width: 72%;
+  height: 39%;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(165deg, rgba(255,255,255,.78), rgba(255,255,255,.18) 38%, rgba(255,255,255,0) 72%);
+  content: "";
+  mix-blend-mode: screen;
+  opacity: .56;
+  pointer-events: none;
+  transform: rotate(-12deg);
+  animation: mdEmblemShine 4.6s ease-in-out infinite;
+}
+
+.md-emblem-3d__spark {
+  position: absolute;
+  z-index: 6;
+  top: 9%;
+  right: 13%;
+  width: calc(var(--emblem-size) * .16);
+  height: calc(var(--emblem-size) * .16);
+  pointer-events: none;
+  opacity: .5;
+  filter: drop-shadow(0 0 4px #fff4c5);
+  animation: mdEmblemSpark 3.8s ease-in-out infinite;
+}
+
+.md-emblem-3d__spark::before,
+.md-emblem-3d__spark::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+  background: #fff8d8;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.md-emblem-3d__spark::before { width: 100%; height: 1px; }
+.md-emblem-3d__spark::after { width: 1px; height: 100%; }
+
+.md-emblem-3d[data-emblem-id="flamengo"] .md-emblem-3d__depth,
+.md-emblem-3d[data-emblem-id="flamengo"] .md-emblem-3d__image,
+.md-emblem-3d[data-emblem-id="vitoria-guimaraes"] .md-emblem-3d__depth,
+.md-emblem-3d[data-emblem-id="vitoria-guimaraes"] .md-emblem-3d__image {
+  width: 80%;
+  height: 88%;
+}
+
+.md-emblem-3d[data-emblem-id="sporting-cp"] .md-emblem-3d__depth,
+.md-emblem-3d[data-emblem-id="sporting-cp"] .md-emblem-3d__image,
+.md-emblem-3d[data-emblem-id="benfica"] .md-emblem-3d__depth,
+.md-emblem-3d[data-emblem-id="benfica"] .md-emblem-3d__image {
+  width: 86%;
+  height: 86%;
+}
+
+.md-emblem-3d--empty::before { filter: grayscale(.72); opacity: .72; }
+.md-emblem-3d--empty .md-emblem-3d__fallback { z-index: 4; font-size: calc(var(--emblem-size) * .3); }
+
+.md-emblem-3d:hover {
+  z-index: 5;
+  filter: brightness(1.06) saturate(1.08);
+  transform: translateY(-2px) rotateX(0deg) rotateY(-4deg) scale(1.055);
+}
+
+.md-emblem-3d:hover .md-emblem-3d__image {
+  filter:
+    drop-shadow(0 calc(var(--emblem-size) * .1) calc(var(--emblem-size) * .07) rgba(0,0,0,.86))
+    drop-shadow(0 0 calc(var(--emblem-size) * .09) color-mix(in srgb, var(--emblem-accent) 48%, transparent))
+    saturate(1.2)
+    contrast(1.1);
+  transform: translate3d(0, -4%, 9px) scale(1.045);
+}
+
+@keyframes mdEmblemShine {
+  0%, 64%, 100% { opacity: .38; transform: translateX(-5%) rotate(-12deg); }
+  76% { opacity: .82; transform: translateX(7%) rotate(-12deg); }
+}
+
+@keyframes mdEmblemSpark {
+  0%, 68%, 100% { opacity: .22; transform: scale(.55) rotate(0deg); }
+  78% { opacity: .95; transform: scale(1.18) rotate(45deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-emblem-3d,
+  .md-emblem-3d__image {
+    transition: none;
+  }
+
+  .md-emblem-3d__shine,
+  .md-emblem-3d__spark {
+    animation: none;
+  }
+}
 
 /* Club-driven premium visual system. The variables are set from the chosen emblem. */
 body { background:var(--md-bg-stadium,#071A14); transition:background .35s ease; }
