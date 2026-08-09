@@ -613,6 +613,36 @@ function GlobalStyle() {
         50% { box-shadow: 0 0 28px 3px color-mix(in srgb, var(--ach-glow) 42%, transparent); }
       }
 
+      .md-shared-achievement-page{
+        min-height:100dvh;
+        padding:calc(1.4rem + env(safe-area-inset-top)) 1rem calc(2rem + env(safe-area-inset-bottom));
+        background:
+          radial-gradient(circle at 50% 8%, color-mix(in srgb, var(--md-bg-amber, #FFB627) 18%, transparent), transparent 32%),
+          linear-gradient(160deg, #07152b 0%, var(--md-bg-stadium, #071A14) 52%, #020617 100%);
+      }
+      .md-shared-achievement-layout{
+        width:min(100%, 23rem);
+        margin-inline:auto;
+      }
+      .md-shared-achievement-brand{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:.55rem;
+        color:var(--md-text-amber, #FFC85C);
+        font:600 .7rem/1 'Oswald', sans-serif;
+        letter-spacing:.2em;
+        text-transform:uppercase;
+      }
+      .md-shared-achievement-hint{
+        border:1px solid rgba(255,255,255,.12);
+        border-radius:.85rem;
+        padding:.8rem 1rem;
+        color:rgba(255,255,255,.72);
+        background:rgba(2,6,23,.38);
+        font:.72rem/1.45 'Inter', sans-serif;
+        text-align:center;
+      }
       .md-achievement-shell{
         position:relative;
         overflow:hidden;
@@ -2769,7 +2799,7 @@ function OverviewDashboard({ players, matches, schedules, myName }) {
 
 /* ---------------- Root App ---------------- */
 
-export default function App() {
+function MainApp() {
   useFonts();
 
   const [phase, setPhase] = useState("loading"); // loading | join | app
@@ -4596,6 +4626,62 @@ export default function App() {
   );
 }
 
+function SharedAchievementCardView({ data }) {
+  useFonts();
+  const [expanded, setExpanded] = useState(false);
+  const item = { title: data.title, icon: data.icon };
+  const appUrl = getAchievementShareBaseUrl().toString();
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = `Carta de ${data.playerName} • eFootball Rivals`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [data.playerName]);
+
+  return (
+    <div className="md-shared-achievement-page md-ui-boost">
+      <GlobalStyle />
+      <main className="md-shared-achievement-layout">
+        <div className="text-center mb-5">
+          <p className="md-shared-achievement-brand"><Trophy size={16} /> EFOOTBALL RIVALS</p>
+          <h1 className="font-oswald text-2xl md-text-bone mt-3">CARTA INTERATIVA</h1>
+          <p className="text-sm md-text-muted mt-1">Toque na carta para revelar a conquista.</p>
+        </div>
+
+        <AchievementCard
+          item={item}
+          playerName={data.playerName}
+          emblemId={data.emblemId}
+          playerGoals={data.goals}
+          index={0}
+          expanded={expanded}
+          onToggle={() => setExpanded((current) => !current)}
+        />
+
+        <p className="md-shared-achievement-hint mt-4">
+          Esta carta abre como uma experiência interativa. Pode revelar os detalhes e voltar a partilhar o mesmo link.
+        </p>
+
+        <a
+          href={appUrl}
+          className="md-btn-amber mt-4 w-full min-h-[3rem] rounded-xl font-oswald tracking-wide inline-flex items-center justify-center gap-2"
+        >
+          ENTRAR NA APP <ChevronRight size={17} />
+        </a>
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  const sharedAchievement = readSharedAchievement();
+  return sharedAchievement
+    ? <SharedAchievementCardView data={sharedAchievement} />
+    : <MainApp />;
+}
+
 /* ---------------- Join / Create screen ---------------- */
 
 function JoinScreen({ defaultName, onCreate, onJoin, isAdmin = false, onUnlockAdmin }) {
@@ -6276,166 +6362,80 @@ function getAchievementGoalValue(item, playerGoals = 0) {
   return Math.max(0, Number(playerGoals || 0));
 }
 
-function drawAchievementCardText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
-  const words = String(text || "").split(/\s+/).filter(Boolean);
-  const lines = [];
-  let line = "";
-
-  words.forEach((word) => {
-    const candidate = line ? `${line} ${word}` : word;
-    if (ctx.measureText(candidate).width <= maxWidth || !line) {
-      line = candidate;
-    } else {
-      lines.push(line);
-      line = word;
-    }
-  });
-  if (line) lines.push(line);
-
-  const visibleLines = lines.slice(0, maxLines);
-  if (lines.length > maxLines && visibleLines.length) {
-    let last = visibleLines[visibleLines.length - 1];
-    while (last.length > 2 && ctx.measureText(`${last}…`).width > maxWidth) {
-      last = last.slice(0, -1);
-    }
-    visibleLines[visibleLines.length - 1] = `${last}…`;
-  }
-  visibleLines.forEach((value, idx) => ctx.fillText(value, x, y + idx * lineHeight));
+function getAchievementShareBaseUrl() {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  return url;
 }
 
-async function buildAchievementCardFile({ item, playerName, emblemId, playerGoals }) {
-  const meta = getAchievementCardMeta(item);
-  const goalValue = getAchievementGoalValue(item, playerGoals);
-  const canvas = document.createElement("canvas");
-  canvas.width = 1080;
-  canvas.height = 1350;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Não foi possível criar a imagem da carta.");
-
-  const palettes = {
-    standard: ["#07152b", "#173b57", "#9ef3ff"],
-    featured: ["#101b42", "#243d8f", "#e7ff00"],
-    epic: ["#20103d", "#5d1f78", "#75eaff"],
-    legendary: ["#341250", "#7a3b32", "#ffc85c"],
+function buildAchievementShareUrl({ item, playerName, emblemId, playerGoals }) {
+  const payload = {
+    v: 1,
+    playerName: String(playerName || "Jogador").slice(0, 80),
+    emblemId: String(emblemId || "").slice(0, 80),
+    title: String(item?.title || "Conquista desbloqueada").slice(0, 140),
+    icon: String(item?.icon || "🏅").slice(0, 12),
+    goals: getAchievementGoalValue(item, playerGoals),
   };
-  const [deep, mid, accent] = palettes[meta.rarity] || palettes.standard;
+  const url = getAchievementShareBaseUrl();
+  url.searchParams.set("achievement", JSON.stringify(payload));
+  return url.toString();
+}
 
-  const background = ctx.createLinearGradient(0, 0, 1080, 1350);
-  background.addColorStop(0, mid);
-  background.addColorStop(0.54, deep);
-  background.addColorStop(1, "#020617");
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, 1080, 1350);
+function readSharedAchievement() {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("achievement");
+  if (!raw || raw.length > 1200) return null;
 
-  const glow = ctx.createRadialGradient(540, 430, 30, 540, 430, 460);
-  glow.addColorStop(0, `${accent}99`);
-  glow.addColorStop(0.46, `${accent}24`);
-  glow.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, 1080, 950);
-
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 12;
-  ctx.strokeRect(36, 36, 1008, 1278);
-  ctx.strokeStyle = "rgba(255,255,255,0.28)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(58, 58, 964, 1234);
-
-  ctx.fillStyle = "#FFFFFF";
-  ctx.font = "700 118px Oswald, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(String(goalValue), 95, 180);
-  ctx.fillStyle = "rgba(255,255,255,.72)";
-  ctx.font = "700 30px Oswald, sans-serif";
-  ctx.fillText("GOLS", 101, 226);
-
-  ctx.textAlign = "right";
-  ctx.fillStyle = accent;
-  ctx.font = "700 30px Oswald, sans-serif";
-  ctx.fillText(meta.rarityLabel.toUpperCase(), 970, 145);
-  ctx.fillStyle = "rgba(255,255,255,.72)";
-  ctx.font = "600 20px Inter, sans-serif";
-  ctx.fillText("CARTA DE CONQUISTA", 970, 184);
-
-  const emblem = EMBLEM_MAP[emblemId];
-  let emblemDrawn = false;
-  if (emblem?.url) {
-    try {
-      const image = await loadImage(emblem.url);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(540, 520, 225, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(image, 315, 295, 450, 450);
-      ctx.restore();
-      emblemDrawn = true;
-    } catch {}
+  try {
+    const value = JSON.parse(raw);
+    if (Number(value?.v) !== 1 || !String(value?.playerName || "").trim() || !String(value?.title || "").trim()) {
+      return null;
+    }
+    return {
+      playerName: String(value.playerName).trim().slice(0, 80),
+      emblemId: String(value.emblemId || "").trim().slice(0, 80),
+      title: String(value.title).trim().slice(0, 140),
+      icon: String(value.icon || "🏅").slice(0, 12),
+      goals: Math.max(0, Math.min(9999, Number(value.goals || 0))),
+    };
+  } catch {
+    return null;
   }
+}
 
-  if (!emblemDrawn) {
-    ctx.fillStyle = "rgba(255,255,255,.14)";
-    ctx.beginPath();
-    ctx.arc(540, 520, 225, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = accent;
-    ctx.font = "700 152px Oswald, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(initials(playerName), 540, 520);
-    ctx.textBaseline = "alphabetic";
-  }
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#FFFFFF";
-  ctx.font = "700 64px Oswald, sans-serif";
-  drawAchievementCardText(ctx, playerName, 540, 835, 840, 70, 2);
-
-  ctx.fillStyle = accent;
-  ctx.font = "700 34px Oswald, sans-serif";
-  ctx.fillText("CONQUISTA DESBLOQUEADA", 540, 990);
-
-  ctx.fillStyle = "#FFFFFF";
-  ctx.font = "600 42px Inter, sans-serif";
-  drawAchievementCardText(ctx, `${item.icon || "🏅"} ${item.title}`, 540, 1060, 850, 56, 3);
-
-  ctx.fillStyle = "rgba(255,255,255,.7)";
-  ctx.font = "500 24px Inter, sans-serif";
-  ctx.fillText("EFOOTBALL RIVALS • COLEÇÃO DE CONQUISTAS", 540, 1250);
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Não foi possível exportar a carta.")), "image/png", 0.96);
-  });
-  const slug = String(playerName || "jogador")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 42);
-  return new File([blob], `carta-conquista-${slug || "jogador"}.png`, { type: "image/png" });
+function copyShareLinkFallback(value) {
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  const copied = document.execCommand("copy");
+  input.remove();
+  return copied;
 }
 
 async function shareAchievementCard({ item, playerName, emblemId, playerGoals }) {
-  const file = await buildAchievementCardFile({ item, playerName, emblemId, playerGoals });
-  if (navigator.canShare?.({ files: [file] })) {
+  const url = buildAchievementShareUrl({ item, playerName, emblemId, playerGoals });
+  if (navigator.share) {
     await navigator.share({
-      title: `Carta de conquista de ${playerName}`,
-      text: `${playerName}: ${item.title}`,
-      files: [file],
+      title: `Carta interativa de ${playerName}`,
+      text: `${playerName}: ${item.title}. Abra para interagir com a carta.`,
+      url,
     });
     return "shared";
   }
 
-  const url = URL.createObjectURL(file);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = file.name;
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1600);
-  return "downloaded";
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url);
+    return "copied";
+  }
+
+  if (copyShareLinkFallback(url)) return "copied";
+  throw new Error("Não foi possível copiar o link interativo.");
 }
 
 function AchievementCard({ item, playerName, emblemId, playerGoals, index, expanded, onToggle }) {
@@ -6478,9 +6478,9 @@ function AchievementCard({ item, playerName, emblemId, playerGoals, index, expan
   const shareLabel =
     shareState === "loading" ? "A PREPARAR..." :
     shareState === "shared" ? "CARTA PARTILHADA" :
-    shareState === "downloaded" ? "IMAGEM GUARDADA" :
+    shareState === "copied" ? "LINK COPIADO" :
     shareState === "error" ? "TENTAR NOVAMENTE" :
-    "PARTILHAR CARTA";
+    "PARTILHAR CARTA INTERATIVA";
 
   return (
     <div className="md-achievement-card-wrap">
