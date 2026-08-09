@@ -639,6 +639,16 @@ function GlobalStyle() {
         gap:1rem;
         align-items:start;
       }
+      .md-achievement-grid.is-collapsed{
+        grid-template-columns:minmax(0, 21rem);
+        justify-content:start;
+      }
+      .md-achievement-card-wrap{
+        display:flex;
+        min-width:0;
+        flex-direction:column;
+        gap:.65rem;
+      }
       .md-achievement-card{
         --ach-glow:#5ee7ff;
         --ach-edge:#9ef3ff;
@@ -858,6 +868,39 @@ function GlobalStyle() {
         text-transform:uppercase;
       }
       .md-achievement-card.is-open .md-achievement-card__details{ grid-template-rows:1fr; opacity:1; }
+      .md-achievement-share-btn,
+      .md-achievement-profile-toggle{
+        display:flex;
+        min-height:2.75rem;
+        align-items:center;
+        justify-content:center;
+        gap:.5rem;
+        border:1px solid color-mix(in srgb, var(--md-bg-amber, #FFB627) 38%, transparent);
+        border-radius:.8rem;
+        padding:.7rem 1rem;
+        color:var(--md-text-amber, #FFC85C);
+        background:linear-gradient(135deg, color-mix(in srgb, var(--md-bg-amber, #FFB627) 13%, transparent), rgba(2,6,23,.34));
+        font:600 .68rem/1 'Oswald', sans-serif;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        transition:transform .18s ease, border-color .18s ease, background .18s ease;
+      }
+      .md-achievement-share-btn:hover,
+      .md-achievement-profile-toggle:hover{
+        border-color:var(--md-text-amber, #FFC85C);
+        background:color-mix(in srgb, var(--md-bg-amber, #FFB627) 19%, transparent);
+        transform:translateY(-2px);
+      }
+      .md-achievement-share-btn:active,
+      .md-achievement-profile-toggle:active{ transform:scale(.99); }
+      .md-achievement-share-btn:disabled{ opacity:.62; cursor:wait; }
+      .md-achievement-profile-toggle{
+        width:100%;
+        margin-top:.9rem;
+        border-style:dashed;
+      }
+      .md-achievement-profile-toggle svg{ transition:transform .22s ease; }
+      .md-achievement-profile-toggle[aria-expanded="true"] svg{ transform:rotate(90deg); }
       .md-achievement-count{
         display:inline-flex;
         align-items:center;
@@ -872,13 +915,16 @@ function GlobalStyle() {
       }
       @media (max-width: 520px) {
         .md-achievement-shell{ margin-inline:-.25rem; padding:1rem !important; }
-        .md-achievement-grid{ grid-template-columns:minmax(0, 1fr); }
+        .md-achievement-grid,
+        .md-achievement-grid.is-collapsed{ grid-template-columns:minmax(0, 1fr); }
+        .md-achievement-card-wrap{ max-width:21rem; width:100%; margin-inline:auto; }
         .md-achievement-card{ max-width:21rem; margin-inline:auto; min-height:22rem; }
       }
 
       @media (prefers-reduced-motion: reduce) {
         .md-anim-slideIn, .md-anim-slideInDrawer, .md-anim-popIn, .md-anim-shake,
-        .md-anim-bounce, .md-anim-marquee, .md-anim-pulse {
+        .md-anim-bounce, .md-anim-marquee, .md-anim-pulse,
+        .md-achievement-card, .md-achievement-card__foil, .md-achievement-card__aura {
           animation-duration: 0.01ms !important;
           animation-iteration-count: 1 !important;
         }
@@ -6221,8 +6267,181 @@ function getAchievementCardMeta(item, index = 0) {
   };
 }
 
-function AchievementCard({ item, playerName, emblemId, index, expanded, onToggle }) {
+function getAchievementGoalValue(item, playerGoals = 0) {
+  const title = String(item?.title || "");
+  const milestone = title.match(/Atingiu (\d+) gols/i);
+  if (milestone?.[1]) return Number(milestone[1]);
+  const parentheticalGoals = title.match(/\((\d+) gols/i);
+  if (parentheticalGoals?.[1]) return Number(parentheticalGoals[1]);
+  return Math.max(0, Number(playerGoals || 0));
+}
+
+function drawAchievementCardText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+
+  words.forEach((word) => {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth || !line) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  });
+  if (line) lines.push(line);
+
+  const visibleLines = lines.slice(0, maxLines);
+  if (lines.length > maxLines && visibleLines.length) {
+    let last = visibleLines[visibleLines.length - 1];
+    while (last.length > 2 && ctx.measureText(`${last}…`).width > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    visibleLines[visibleLines.length - 1] = `${last}…`;
+  }
+  visibleLines.forEach((value, idx) => ctx.fillText(value, x, y + idx * lineHeight));
+}
+
+async function buildAchievementCardFile({ item, playerName, emblemId, playerGoals }) {
+  const meta = getAchievementCardMeta(item);
+  const goalValue = getAchievementGoalValue(item, playerGoals);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Não foi possível criar a imagem da carta.");
+
+  const palettes = {
+    standard: ["#07152b", "#173b57", "#9ef3ff"],
+    featured: ["#101b42", "#243d8f", "#e7ff00"],
+    epic: ["#20103d", "#5d1f78", "#75eaff"],
+    legendary: ["#341250", "#7a3b32", "#ffc85c"],
+  };
+  const [deep, mid, accent] = palettes[meta.rarity] || palettes.standard;
+
+  const background = ctx.createLinearGradient(0, 0, 1080, 1350);
+  background.addColorStop(0, mid);
+  background.addColorStop(0.54, deep);
+  background.addColorStop(1, "#020617");
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, 1080, 1350);
+
+  const glow = ctx.createRadialGradient(540, 430, 30, 540, 430, 460);
+  glow.addColorStop(0, `${accent}99`);
+  glow.addColorStop(0.46, `${accent}24`);
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 1080, 950);
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 12;
+  ctx.strokeRect(36, 36, 1008, 1278);
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(58, 58, 964, 1234);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "700 118px Oswald, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(String(goalValue), 95, 180);
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.font = "700 30px Oswald, sans-serif";
+  ctx.fillText("GOLS", 101, 226);
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = accent;
+  ctx.font = "700 30px Oswald, sans-serif";
+  ctx.fillText(meta.rarityLabel.toUpperCase(), 970, 145);
+  ctx.fillStyle = "rgba(255,255,255,.72)";
+  ctx.font = "600 20px Inter, sans-serif";
+  ctx.fillText("CARTA DE CONQUISTA", 970, 184);
+
+  const emblem = EMBLEM_MAP[emblemId];
+  let emblemDrawn = false;
+  if (emblem?.url) {
+    try {
+      const image = await loadImage(emblem.url);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(540, 520, 225, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(image, 315, 295, 450, 450);
+      ctx.restore();
+      emblemDrawn = true;
+    } catch {}
+  }
+
+  if (!emblemDrawn) {
+    ctx.fillStyle = "rgba(255,255,255,.14)";
+    ctx.beginPath();
+    ctx.arc(540, 520, 225, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = accent;
+    ctx.font = "700 152px Oswald, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials(playerName), 540, 520);
+    ctx.textBaseline = "alphabetic";
+  }
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "700 64px Oswald, sans-serif";
+  drawAchievementCardText(ctx, playerName, 540, 835, 840, 70, 2);
+
+  ctx.fillStyle = accent;
+  ctx.font = "700 34px Oswald, sans-serif";
+  ctx.fillText("CONQUISTA DESBLOQUEADA", 540, 990);
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "600 42px Inter, sans-serif";
+  drawAchievementCardText(ctx, `${item.icon || "🏅"} ${item.title}`, 540, 1060, 850, 56, 3);
+
+  ctx.fillStyle = "rgba(255,255,255,.7)";
+  ctx.font = "500 24px Inter, sans-serif";
+  ctx.fillText("EFOOTBALL RIVALS • COLEÇÃO DE CONQUISTAS", 540, 1250);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Não foi possível exportar a carta.")), "image/png", 0.96);
+  });
+  const slug = String(playerName || "jogador")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42);
+  return new File([blob], `carta-conquista-${slug || "jogador"}.png`, { type: "image/png" });
+}
+
+async function shareAchievementCard({ item, playerName, emblemId, playerGoals }) {
+  const file = await buildAchievementCardFile({ item, playerName, emblemId, playerGoals });
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({
+      title: `Carta de conquista de ${playerName}`,
+      text: `${playerName}: ${item.title}`,
+      files: [file],
+    });
+    return "shared";
+  }
+
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1600);
+  return "downloaded";
+}
+
+function AchievementCard({ item, playerName, emblemId, playerGoals, index, expanded, onToggle }) {
   const meta = getAchievementCardMeta(item, index);
+  const goalValue = getAchievementGoalValue(item, playerGoals);
+  const [shareState, setShareState] = useState("idle");
 
   const updateTilt = (event) => {
     if (event.pointerType !== "mouse") return;
@@ -6238,60 +6457,99 @@ function AchievementCard({ item, playerName, emblemId, index, expanded, onToggle
     event.currentTarget.style.setProperty("--ach-rotate-x", "0deg");
   };
 
+  const handleShare = async () => {
+    if (shareState === "loading") return;
+    setShareState("loading");
+    try {
+      const result = await shareAchievementCard({ item, playerName, emblemId, playerGoals });
+      setShareState(result);
+      window.setTimeout(() => setShareState("idle"), 2200);
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.error("Falha ao partilhar carta", error);
+        setShareState("error");
+        window.setTimeout(() => setShareState("idle"), 2500);
+      } else {
+        setShareState("idle");
+      }
+    }
+  };
+
+  const shareLabel =
+    shareState === "loading" ? "A PREPARAR..." :
+    shareState === "shared" ? "CARTA PARTILHADA" :
+    shareState === "downloaded" ? "IMAGEM GUARDADA" :
+    shareState === "error" ? "TENTAR NOVAMENTE" :
+    "PARTILHAR CARTA";
+
   return (
-    <button
-      type="button"
-      className={`md-achievement-card ${expanded ? "is-open" : ""}`}
-      data-rarity={meta.rarity}
-      data-achievement-card="true"
-      aria-expanded={expanded}
-      aria-label={`${item.title}, carta ${meta.rarityLabel} de ${playerName}. ${expanded ? "Fechar detalhes" : "Abrir detalhes"}`}
-      onClick={onToggle}
-      onPointerMove={updateTilt}
-      onPointerLeave={resetTilt}
-      style={{ "--ach-index": index } as React.CSSProperties}
-    >
-      <span className="md-achievement-card__pattern" aria-hidden="true" />
-      <span className="md-achievement-card__foil" aria-hidden="true" />
-      <span className="md-achievement-card__top">
-        <span className="md-achievement-card__rating">
-          <strong>{meta.rating}</strong>
-          <small>OVR</small>
+    <div className="md-achievement-card-wrap">
+      <button
+        type="button"
+        className={`md-achievement-card ${expanded ? "is-open" : ""}`}
+        data-rarity={meta.rarity}
+        data-achievement-card="true"
+        aria-expanded={expanded}
+        aria-label={`${item.title}, carta ${meta.rarityLabel} de ${playerName}, ${goalValue} gols. ${expanded ? "Fechar detalhes" : "Abrir detalhes"}`}
+        onClick={onToggle}
+        onPointerMove={updateTilt}
+        onPointerLeave={resetTilt}
+        style={{ "--ach-index": index } as React.CSSProperties}
+      >
+        <span className="md-achievement-card__pattern" aria-hidden="true" />
+        <span className="md-achievement-card__foil" aria-hidden="true" />
+        <span className="md-achievement-card__top">
+          <span className="md-achievement-card__rating">
+            <strong>{goalValue}</strong>
+            <small>GOLS</small>
+          </span>
+          <span className="md-achievement-card__rarity">{meta.rarityLabel}</span>
         </span>
-        <span className="md-achievement-card__rarity">{meta.rarityLabel}</span>
-      </span>
 
-      <span className="md-achievement-card__main">
-        <span className="md-achievement-card__aura" aria-hidden="true" />
-        <span className="md-achievement-card__emblem">
-          <EmblemBadge emblemId={emblemId} size={78} />
-        </span>
-        <span className="md-achievement-card__player md-name-animated" data-name-animation="enabled">
-          {playerName}
-        </span>
-      </span>
-
-      <span className="md-achievement-card__title">
-        <span className="md-achievement-card__title-icon" aria-hidden="true">{item.icon || "🏅"}</span>
-        <span>{item.title}</span>
-      </span>
-
-      <span className="md-achievement-card__reveal">
-        {expanded ? "Detalhes revelados" : "Toque para revelar"}
-        <ChevronRight size={14} aria-hidden="true" />
-      </span>
-
-      <span className="md-achievement-card__details" aria-hidden={!expanded}>
-        <span className="md-achievement-card__details-inner">
-          <span className="md-achievement-card__details-copy">
-            <strong>Conquista desbloqueada</strong>
-            {meta.detail}
+        <span className="md-achievement-card__main">
+          <span className="md-achievement-card__aura" aria-hidden="true" />
+          <span className="md-achievement-card__emblem">
+            <EmblemBadge emblemId={emblemId} size={78} />
+          </span>
+          <span className="md-achievement-card__player md-name-animated" data-name-animation="enabled">
+            {playerName}
           </span>
         </span>
-      </span>
-    </button>
+
+        <span className="md-achievement-card__title">
+          <span className="md-achievement-card__title-icon" aria-hidden="true">{item.icon || "🏅"}</span>
+          <span>{item.title}</span>
+        </span>
+
+        <span className="md-achievement-card__reveal">
+          {expanded ? "Detalhes revelados" : "Toque para revelar"}
+          <ChevronRight size={14} aria-hidden="true" />
+        </span>
+
+        <span className="md-achievement-card__details" aria-hidden={!expanded}>
+          <span className="md-achievement-card__details-inner">
+            <span className="md-achievement-card__details-copy">
+              <strong>Conquista desbloqueada</strong>
+              {meta.detail}
+            </span>
+          </span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        className="md-achievement-share-btn"
+        onClick={handleShare}
+        disabled={shareState === "loading"}
+        aria-label={`Partilhar carta ${item.title} de ${playerName}`}
+      >
+        <Share2 size={15} aria-hidden="true" />
+        {shareLabel}
+      </button>
+    </div>
   );
 }
+
 
 /* ---------------- Standings ---------------- */
 
@@ -6644,6 +6902,7 @@ function Standings({ players, matches }) {
     .map((p) => p.name)
     .filter((name) => Array.isArray(achievementsByPlayer[name]) && achievementsByPlayer[name].length > 0);
   const [openAchievement, setOpenAchievement] = useState("");
+  const [openAchievementProfile, setOpenAchievementProfile] = useState("");
 
   const trophyStyles = [
     { color: "text-amber-300", glow: "shadow-[0_0_18px_rgba(255,198,92,0.35)]", label: "OURO" },
@@ -6777,7 +7036,7 @@ function Standings({ players, matches }) {
           <div>
             <p className="font-oswald text-xs tracking-[0.22em] md-text-amber">DREAM TEAM</p>
             <h3 className="font-oswald text-xl md-text-bone mt-1">COLEÇÃO DE CONQUISTAS</h3>
-            <p className="text-xs md-text-muted mt-1">Cartas dinâmicas: toque para revelar a história de cada feito.</p>
+            <p className="text-xs md-text-muted mt-1">A maior carta fica em destaque. Abra o perfil para ver e partilhar as restantes.</p>
           </div>
           <span className="md-achievement-count shrink-0">
             <Trophy size={13} aria-hidden="true" /> {achievements.length} {achievements.length === 1 ? "CARTA" : "CARTAS"}
@@ -6794,8 +7053,16 @@ function Standings({ players, matches }) {
 
         <div className="space-y-6">
           {playersWithAchievements.map((playerName) => {
-            const playerCards = achievementsByPlayer[playerName];
+            const playerGoals = Number(extras.scorers[playerName] || 0);
+            const playerCards = [...achievementsByPlayer[playerName]].sort((a, b) => {
+              const ratingDiff = getAchievementCardMeta(b).rating - getAchievementCardMeta(a).rating;
+              if (ratingDiff !== 0) return ratingDiff;
+              return getAchievementGoalValue(b, playerGoals) - getAchievementGoalValue(a, playerGoals);
+            });
             const emblemId = getEmblemIdByName(players, playerName);
+            const profileExpanded = openAchievementProfile === playerName;
+            const visibleCards = profileExpanded ? playerCards : playerCards.slice(0, 1);
+
             return (
               <section key={`ach-user-${playerName}`} className="md-achievement-player-section">
                 <div className="flex items-center justify-between gap-3 mb-3">
@@ -6806,18 +7073,20 @@ function Standings({ players, matches }) {
                     textClassName="font-oswald text-base md-text-bone"
                   />
                   <span className="text-xs font-oswald md-text-muted">
-                    {playerCards.length} {playerCards.length === 1 ? "CONQUISTA" : "CONQUISTAS"}
+                    {profileExpanded ? `${playerCards.length} CONQUISTAS` : "MAIOR CONQUISTA"}
                   </span>
                 </div>
-                <div className="md-achievement-grid">
-                  {playerCards.map((item, idx) => {
-                    const cardId = `${playerName}-${idx}-${item.title}`;
+
+                <div className={`md-achievement-grid ${profileExpanded ? "" : "is-collapsed"}`}>
+                  {visibleCards.map((item, idx) => {
+                    const cardId = `${playerName}-${item.title}`;
                     return (
                       <AchievementCard
                         key={cardId}
                         item={item}
                         playerName={playerName}
                         emblemId={emblemId}
+                        playerGoals={playerGoals}
                         index={idx}
                         expanded={openAchievement === cardId}
                         onToggle={() => setOpenAchievement((current) => current === cardId ? "" : cardId)}
@@ -6825,6 +7094,23 @@ function Standings({ players, matches }) {
                     );
                   })}
                 </div>
+
+                {playerCards.length > 1 && (
+                  <button
+                    type="button"
+                    className="md-achievement-profile-toggle"
+                    aria-expanded={profileExpanded}
+                    onClick={() => {
+                      setOpenAchievement("");
+                      setOpenAchievementProfile((current) => current === playerName ? "" : playerName);
+                    }}
+                  >
+                    {profileExpanded
+                      ? "MOSTRAR APENAS A MAIOR CONQUISTA"
+                      : `ABRIR PERFIL • VER MAIS ${playerCards.length - 1}`}
+                    <ChevronRight size={15} aria-hidden="true" />
+                  </button>
+                )}
               </section>
             );
           })}
