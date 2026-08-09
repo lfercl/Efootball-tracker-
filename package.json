@@ -29,7 +29,8 @@
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "gifenc": "^1.0.3"
   },
   "devDependencies": {
     "@types/react": "latest",
