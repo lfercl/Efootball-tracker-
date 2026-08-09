@@ -6510,10 +6510,10 @@ function drawGifWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 5)
 
 function getAchievementGifPalette(rarity) {
   const palettes = {
-    standard: { deep: "#07152b", mid: "#173b57", accent: "#9ef3ff" },
-    featured: { deep: "#101b42", mid: "#243d8f", accent: "#e7ff00" },
-    epic: { deep: "#20103d", mid: "#5d1f78", accent: "#75eaff" },
-    legendary: { deep: "#341250", mid: "#7a3b32", accent: "#ffc85c" },
+    standard: { deep: "#061425", mid: "#123c54", accent: "#9ef3ff", edge: "#dffcff", foil: "#4ad7ff" },
+    featured: { deep: "#07163d", mid: "#2046a0", accent: "#e7ff00", edge: "#fbffc1", foil: "#75eaff" },
+    epic: { deep: "#1b0a38", mid: "#642779", accent: "#75eaff", edge: "#ffd3fa", foil: "#ff4fd8" },
+    legendary: { deep: "#240b3e", mid: "#81412c", accent: "#ffc85c", edge: "#fff1b8", foil: "#d968ff" },
   };
   return palettes[rarity] || palettes.standard;
 }
@@ -6522,133 +6522,322 @@ function drawAchievementGifFrame(ctx, { item, playerName, playerGoals, meta, emb
   const width = ctx.canvas.width;
   const height = ctx.canvas.height;
   const goalValue = getAchievementGoalValue(item, playerGoals);
-  const { deep, mid, accent } = getAchievementGifPalette(meta.rarity);
+  const { deep, mid, accent, edge, foil } = getAchievementGifPalette(meta.rarity);
+  const wave = Math.sin(progress * Math.PI * 2);
+  const shimmer = (progress + .18) % 1;
 
+  // Stadium atmosphere and distant floodlights.
   const background = ctx.createLinearGradient(0, 0, width, height);
-  background.addColorStop(0, mid);
-  background.addColorStop(.52, deep);
-  background.addColorStop(1, "#020617");
+  background.addColorStop(0, "#020617");
+  background.addColorStop(.34, mid);
+  background.addColorStop(.7, deep);
+  background.addColorStop(1, "#01030b");
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
 
-  const pulse = .5 + Math.sin(progress * Math.PI * 2) * .14;
-  const aura = ctx.createRadialGradient(width / 2, 190, 18, width / 2, 190, 165);
-  aura.addColorStop(0, `${accent}cc`);
-  aura.addColorStop(pulse, `${accent}28`);
-  aura.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = aura;
-  ctx.fillRect(0, 20, width, 360);
+  for (let light = 0; light < 5; light += 1) {
+    const sourceX = 40 + light * 86;
+    const beam = ctx.createLinearGradient(sourceX, 0, width / 2, 430);
+    beam.addColorStop(0, "rgba(255,255,255,.14)");
+    beam.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.save();
+    ctx.globalAlpha = .34 + (light % 2) * .08;
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(sourceX - 18, 0);
+    ctx.lineTo(sourceX + 18, 0);
+    ctx.lineTo(width / 2 + (light - 2) * 42, 470);
+    ctx.lineTo(width / 2 + (light - 2) * 18, 470);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 
+  // Premium card body with cut corners and metallic depth.
+  const inset = 17;
+  ctx.beginPath();
+  ctx.moveTo(inset + 30, inset);
+  ctx.lineTo(width - inset - 30, inset);
+  ctx.lineTo(width - inset, inset + 30);
+  ctx.lineTo(width - inset, height - inset - 42);
+  ctx.lineTo(width - inset - 42, height - inset);
+  ctx.lineTo(inset + 42, height - inset);
+  ctx.lineTo(inset, height - inset - 42);
+  ctx.lineTo(inset, inset + 30);
+  ctx.closePath();
+  const cardFill = ctx.createLinearGradient(inset, inset, width - inset, height - inset);
+  cardFill.addColorStop(0, `${mid}f2`);
+  cardFill.addColorStop(.45, `${deep}fa`);
+  cardFill.addColorStop(1, "#030712");
+  ctx.fillStyle = cardFill;
+  ctx.shadowColor = "rgba(0,0,0,.8)";
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 18;
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+
+  const borderLayers = [
+    { color: "rgba(0,0,0,.8)", width: 13 },
+    { color: `${accent}88`, width: 8 },
+    { color: edge, width: 3 },
+    { color: "rgba(255,255,255,.75)", width: 1 },
+  ];
+  borderLayers.forEach((layer) => {
+    ctx.strokeStyle = layer.color;
+    ctx.lineWidth = layer.width;
+    ctx.stroke();
+  });
+
+  // Technical foil lines and pitch geometry.
   ctx.save();
-  ctx.globalAlpha = .22;
-  ctx.translate(-150 + progress * (width + 300), 0);
-  ctx.rotate(-.28);
-  const shine = ctx.createLinearGradient(-42, 0, 42, 0);
-  shine.addColorStop(0, "rgba(255,255,255,0)");
-  shine.addColorStop(.5, "rgba(255,255,255,.95)");
-  shine.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = shine;
-  ctx.fillRect(-42, -110, 84, height + 220);
+  ctx.globalAlpha = .12;
+  ctx.strokeStyle = foil;
+  ctx.lineWidth = 1;
+  for (let x = -height; x < width + height; x += 34) {
+    ctx.beginPath();
+    ctx.moveTo(x + shimmer * 34, 28);
+    ctx.lineTo(x + height * .5 + shimmer * 34, height - 28);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(width / 2, height - 76, 72, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(55, height - 76);
+  ctx.lineTo(width - 55, height - 76);
+  ctx.stroke();
   ctx.restore();
 
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 5;
-  ctx.strokeRect(12, 12, width - 24, height - 24);
-  ctx.strokeStyle = "rgba(255,255,255,.3)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(20, 20, width - 40, height - 40);
+  // Deterministic fine grain for a less flat, printed-card surface.
+  ctx.save();
+  for (let grain = 0; grain < 90; grain += 1) {
+    const x = (grain * 83 + 17) % width;
+    const y = (grain * 137 + 31) % height;
+    ctx.globalAlpha = .025 + (grain % 4) * .008;
+    ctx.fillStyle = grain % 3 === 0 ? edge : "#ffffff";
+    ctx.fillRect(x, y, 1 + (grain % 2), 1 + ((grain + 1) % 2));
+  }
+  ctx.restore();
 
+  // Animated holographic sweep.
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.translate(-210 + shimmer * (width + 420), -40);
+  ctx.rotate(-.31);
+  const sweep = ctx.createLinearGradient(-70, 0, 70, 0);
+  sweep.addColorStop(0, "rgba(255,255,255,0)");
+  sweep.addColorStop(.36, `${foil}22`);
+  sweep.addColorStop(.5, "rgba(255,255,255,.88)");
+  sweep.addColorStop(.64, `${accent}38`);
+  sweep.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sweep;
+  ctx.fillRect(-70, -150, 140, height + 300);
+  ctx.restore();
+
+  // Top stats.
   ctx.textAlign = "left";
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "700 48px Oswald, sans-serif";
-  ctx.fillText(String(goalValue), 32, 70);
-  ctx.fillStyle = "rgba(255,255,255,.72)";
-  ctx.font = "700 13px Oswald, sans-serif";
-  ctx.fillText("GOLS", 35, 90);
+  ctx.font = "700 62px Oswald, sans-serif";
+  ctx.shadowColor = "rgba(0,0,0,.75)";
+  ctx.shadowBlur = 9;
+  ctx.fillText(String(goalValue), 45, 100);
+  ctx.shadowColor = "transparent";
+  ctx.fillStyle = edge;
+  ctx.font = "700 14px Oswald, sans-serif";
+  ctx.fillText("GOLS", 49, 124);
 
   ctx.textAlign = "right";
   ctx.fillStyle = accent;
-  ctx.font = "700 15px Oswald, sans-serif";
-  ctx.fillText(meta.rarityLabel.toUpperCase(), width - 32, 55);
-  ctx.fillStyle = "rgba(255,255,255,.68)";
-  ctx.font = "600 9px Inter, sans-serif";
-  ctx.fillText("CARTA DE CONQUISTA", width - 32, 73);
+  ctx.font = "700 17px Oswald, sans-serif";
+  ctx.fillText(meta.rarityLabel.toUpperCase(), width - 46, 69);
+  ctx.fillStyle = "rgba(255,255,255,.76)";
+  ctx.font = "600 10px Inter, sans-serif";
+  ctx.fillText("PREMIUM ACHIEVEMENT", width - 46, 90);
+  ctx.fillStyle = `${edge}aa`;
+  ctx.fillRect(width - 150, 103, 104, 2);
 
+  // Metallic 3D medallion behind the crest.
   const emblemX = width / 2;
-  const emblemY = 172;
-  const emblemSize = 122;
-  ctx.fillStyle = "rgba(255,255,255,.12)";
+  const emblemY = 230 + wave * 3;
+  const plateRadius = 103;
+  ctx.save();
+  ctx.translate(emblemX, emblemY);
+  ctx.scale(1, .93);
+  const plateShadow = ctx.createRadialGradient(8, 16, 16, 8, 16, plateRadius + 22);
+  plateShadow.addColorStop(0, "rgba(0,0,0,.05)");
+  plateShadow.addColorStop(.72, "rgba(0,0,0,.58)");
+  plateShadow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = plateShadow;
   ctx.beginPath();
-  ctx.arc(emblemX, emblemY, emblemSize / 2 + 9, 0, Math.PI * 2);
+  ctx.arc(8, 16, plateRadius + 22, 0, Math.PI * 2);
   ctx.fill();
 
+  const ring = ctx.createRadialGradient(-26, -30, 12, 0, 0, plateRadius);
+  ring.addColorStop(0, "#ffffff");
+  ring.addColorStop(.13, edge);
+  ring.addColorStop(.42, accent);
+  ring.addColorStop(.68, "#26334c");
+  ring.addColorStop(.84, accent);
+  ring.addColorStop(1, "#050815");
+  ctx.fillStyle = ring;
+  ctx.beginPath();
+  ctx.arc(0, 0, plateRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(2,6,23,.82)";
+  ctx.beginPath();
+  ctx.arc(0, 0, plateRadius - 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = `${edge}bb`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const halo = ctx.createRadialGradient(0, 0, 18, 0, 0, plateRadius - 14);
+  halo.addColorStop(0, `${accent}44`);
+  halo.addColorStop(.7, `${foil}16`);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(0, 0, plateRadius - 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Crest preserved in its original transparent shape, with animated extrusion.
   if (emblemImage) {
+    const maxWidth = 164;
+    const maxHeight = 172;
+    const naturalWidth = Math.max(1, emblemImage.naturalWidth || emblemImage.width || 1);
+    const naturalHeight = Math.max(1, emblemImage.naturalHeight || emblemImage.height || 1);
+    const scale = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight);
+    const drawWidth = naturalWidth * scale;
+    const drawHeight = naturalHeight * scale;
+    const yaw = 1 - Math.abs(wave) * .045;
+    const angle = wave * .025;
+
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(emblemX, emblemY, emblemSize / 2, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(emblemImage, emblemX - emblemSize / 2, emblemY - emblemSize / 2, emblemSize, emblemSize);
+    ctx.translate(emblemX, emblemY);
+    ctx.rotate(angle);
+    ctx.scale(yaw, 1);
+    for (let depth = 10; depth >= 1; depth -= 1) {
+      ctx.save();
+      ctx.globalAlpha = .055 + depth * .012;
+      ctx.filter = "brightness(.12) saturate(1.8)";
+      ctx.drawImage(
+        emblemImage,
+        -drawWidth / 2 + depth * .65,
+        -drawHeight / 2 + depth * .8,
+        drawWidth,
+        drawHeight
+      );
+      ctx.restore();
+    }
+    ctx.shadowColor = "rgba(0,0,0,.85)";
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 14;
+    ctx.filter = "saturate(1.18) contrast(1.08) brightness(1.05)";
+    ctx.drawImage(emblemImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    ctx.filter = "none";
+    ctx.shadowColor = "transparent";
+
+    const emblemShine = ctx.createLinearGradient(-drawWidth / 2, 0, drawWidth / 2, 0);
+    emblemShine.addColorStop(0, "rgba(255,255,255,0)");
+    emblemShine.addColorStop(shimmer, "rgba(255,255,255,.34)");
+    emblemShine.addColorStop(Math.min(1, shimmer + .18), "rgba(255,255,255,0)");
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = .5;
+    ctx.fillStyle = emblemShine;
+    ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
     ctx.restore();
   } else {
     ctx.fillStyle = accent;
-    ctx.font = "700 42px Oswald, sans-serif";
+    ctx.font = "700 58px Oswald, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,.8)";
+    ctx.shadowBlur = 14;
     ctx.fillText(initials(playerName), emblemX, emblemY);
+    ctx.shadowColor = "transparent";
     ctx.textBaseline = "alphabetic";
   }
 
-  for (let i = 0; i < 12; i += 1) {
-    const angle = (i / 12) * Math.PI * 2 + progress * Math.PI * 2;
-    const radius = 82 + (i % 3) * 9;
+  // Orbiting highlight particles.
+  for (let particle = 0; particle < 18; particle += 1) {
+    const angle = (particle / 18) * Math.PI * 2 + progress * Math.PI * 2;
+    const radius = 116 + (particle % 4) * 8;
     const x = emblemX + Math.cos(angle) * radius;
-    const y = emblemY + Math.sin(angle) * radius;
-    ctx.globalAlpha = .35 + (i % 2) * .25;
-    ctx.fillStyle = accent;
+    const y = emblemY + Math.sin(angle) * radius * .74;
+    ctx.globalAlpha = .24 + (particle % 3) * .18;
+    ctx.fillStyle = particle % 2 ? accent : edge;
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 6;
     ctx.beginPath();
-    ctx.arc(x, y, 1.5 + (i % 3), 0, Math.PI * 2);
+    ctx.arc(x, y, 1.4 + (particle % 3), 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+  ctx.shadowColor = "transparent";
 
+  // Player and achievement typography.
   ctx.textAlign = "center";
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "700 27px Oswald, sans-serif";
-  drawGifWrappedText(ctx, playerName, width / 2, 268, width - 64, 31, 2);
+  ctx.font = "700 34px Oswald, sans-serif";
+  ctx.shadowColor = "rgba(0,0,0,.9)";
+  ctx.shadowBlur = 10;
+  drawGifWrappedText(ctx, playerName, width / 2, 373, width - 84, 37, 2);
+  ctx.shadowColor = "transparent";
 
   ctx.fillStyle = accent;
-  ctx.font = "700 11px Oswald, sans-serif";
-  ctx.fillText("CONQUISTA DESBLOQUEADA", width / 2, 316);
+  ctx.font = "700 12px Oswald, sans-serif";
+  ctx.fillText("CONQUISTA DESBLOQUEADA", width / 2, 419);
 
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "600 16px Inter, sans-serif";
-  drawGifWrappedText(ctx, item.title, width / 2, 344, width - 62, 21, 3);
+  ctx.font = "600 18px Inter, sans-serif";
+  drawGifWrappedText(ctx, item.title, width / 2, 451, width - 78, 24, 3);
 
-  drawGifRoundedRect(ctx, 28, 402, width - 56, 132, 12);
-  ctx.fillStyle = "rgba(2,6,23,.66)";
+  // Glass details panel, visible in the shared GIF.
+  drawGifRoundedRect(ctx, 38, 515, width - 76, 125, 14);
+  const detailsFill = ctx.createLinearGradient(38, 515, width - 38, 640);
+  detailsFill.addColorStop(0, "rgba(2,6,23,.84)");
+  detailsFill.addColorStop(1, `${deep}d8`);
+  ctx.fillStyle = detailsFill;
+  ctx.shadowColor = "rgba(0,0,0,.55)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 6;
   ctx.fill();
-  ctx.strokeStyle = `${accent}88`;
-  ctx.lineWidth = 1;
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = `${accent}99`;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
   ctx.fillStyle = accent;
   ctx.font = "700 11px Oswald, sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("DETALHES DA CARTA", 45, 430);
-  ctx.fillStyle = "rgba(255,255,255,.88)";
+  ctx.fillText("DETALHES DA CARTA", 58, 543);
+  ctx.fillStyle = "rgba(255,255,255,.9)";
   ctx.font = "500 12px Inter, sans-serif";
-  drawGifWrappedText(ctx, meta.detail, 45, 456, width - 90, 17, 5);
+  drawGifWrappedText(ctx, meta.detail, 58, 568, width - 116, 17, 4);
 
-  ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(255,255,255,.66)";
+  // Serial-number footer and rarity marker.
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(255,255,255,.52)";
   ctx.font = "600 9px Inter, sans-serif";
-  ctx.fillText("EFOOTBALL RIVALS • CARTA ANIMADA", width / 2, 572);
+  ctx.fillText("MDL • DIGITAL COLLECTIBLE", 42, 669);
+  ctx.textAlign = "right";
+  ctx.fillStyle = edge;
+  ctx.fillText(`#${String(goalValue).padStart(3, "0")} • ${meta.rarityLabel.toUpperCase()}`, width - 42, 669);
+
+  // Soft vignette ties the whole render together.
+  const vignette = ctx.createRadialGradient(width / 2, height / 2, height * .25, width / 2, height / 2, height * .72);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,.42)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
 }
 
 async function buildAchievementGifFile({ item, playerName, emblemId, playerGoals }) {
   const canvas = document.createElement("canvas");
-  canvas.width = 360;
-  canvas.height = 600;
+  canvas.width = 420;
+  canvas.height = 700;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Não foi possível preparar o GIF.");
 
@@ -6662,20 +6851,18 @@ async function buildAchievementGifFile({ item, playerName, emblemId, playerGoals
   }
 
   const gif = GIFEncoder();
-  const frameCount = 12;
+  const frameCount = 16;
   let palette = null;
 
   for (let frame = 0; frame < frameCount; frame += 1) {
     const progress = frame / frameCount;
     drawAchievementGifFrame(ctx, { item, playerName, playerGoals, meta, emblemImage }, progress);
     const rgba = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    if (!palette) palette = quantize(rgba, 128);
+    if (!palette) palette = quantize(rgba, 192);
     const indexed = applyPalette(rgba, palette);
-    gif.writeFrame(indexed, canvas.width, canvas.height, {
-      palette: frame === 0 ? palette : undefined,
-      delay: 110,
-      repeat: 0,
-    });
+    const frameOptions = { delay: 95, repeat: 0 };
+    if (frame === 0) frameOptions.palette = palette;
+    gif.writeFrame(indexed, canvas.width, canvas.height, frameOptions);
     if (frame % 3 === 2) {
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     }
