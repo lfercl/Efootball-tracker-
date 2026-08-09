@@ -2248,14 +2248,25 @@ function EmblemBadge({ emblemId, size = 32 }) {
   const emblem = EMBLEM_MAP[emblemId];
   const requestedSize = Math.max(1, Number(size) || 32);
   const displaySize = Math.round(requestedSize * 1.2);
+  const clubTheme = getClubTheme(emblemId);
+  const emblemStyle = {
+    "--emblem-size": displaySize + "px",
+    "--emblem-accent": clubTheme?.["md-bg-amber"] || "#E2B94F",
+    "--emblem-accent-deep": clubTheme?.["md-bg-panel-dark"] || "#17100A",
+    "--emblem-glow": clubTheme?.["md-border-line"] || "#76551C",
+  } as React.CSSProperties;
 
   if (!emblem) {
     return (
       <span
-        className="inline-flex items-center justify-center rounded-full border border-white/20 bg-black/15 text-[10px]"
-        style={{ width: displaySize, height: displaySize }}
+        className="md-emblem-3d md-emblem-3d--empty"
+        data-emblem-scale="large"
+        style={emblemStyle}
+        title="Sem emblema"
+        aria-label="Sem emblema"
       >
-        C
+        <span className="md-emblem-3d__fallback">C</span>
+        <span className="md-emblem-3d__shine" aria-hidden="true" />
       </span>
     );
   }
@@ -2264,11 +2275,32 @@ function EmblemBadge({ emblemId, size = 32 }) {
     <span
       className="md-emblem-3d"
       data-emblem-scale="large"
-      style={{ "--emblem-size": displaySize + "px" } as React.CSSProperties}
+      data-emblem-id={emblemId}
+      style={emblemStyle}
       title={emblem.label}
     >
+      <span className="md-emblem-3d__fallback" aria-hidden="true">{initials(emblem.label)}</span>
+      <img
+        src={emblem.url}
+        alt=""
+        className="md-emblem-3d__depth"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        aria-hidden="true"
+        onError={(event) => { event.currentTarget.style.display = "none"; }}
+      />
+      <img
+        src={emblem.url}
+        alt={emblem.label}
+        className="md-emblem-3d__image"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={(event) => { event.currentTarget.style.display = "none"; }}
+      />
       <span className="md-emblem-3d__shine" aria-hidden="true" />
-      <img src={emblem.url} alt={emblem.label} className="md-emblem-3d__image" loading="lazy" referrerPolicy="no-referrer" />
+      <span className="md-emblem-3d__spark" aria-hidden="true" />
     </span>
   );
 }
