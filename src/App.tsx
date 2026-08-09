@@ -5977,18 +5977,22 @@ async function buildProvocativeResultGifFile(match, players) {
   return new File([bytes], `resultado-provocador-${slug || "partida"}.gif`, { type: "image/gif" });
 }
 
-async function shareProvocativeResultGif(match, players) {
-  const file = await buildProvocativeResultGifFile(match, players);
+async function sharePreparedProvocativeResultGif(match, file) {
   const copy = getProvocativeResultCopy(match);
   const scoreText = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB}`;
 
   if (navigator.canShare?.({ files: [file] })) {
-    await navigator.share({
-      title: "Resultado sem filtro",
-      text: `${scoreText} — ${copy.phrase}`,
-      files: [file],
-    });
-    return "shared";
+    try {
+      await navigator.share({
+        title: "Resultado sem filtro",
+        text: `${scoreText} — ${copy.phrase}`,
+        files: [file],
+      });
+      return "shared";
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      if (error?.name !== "NotAllowedError") throw error;
+    }
   }
 
   const url = URL.createObjectURL(file);
@@ -6025,6 +6029,7 @@ function ResultsManagement({
   const [mediaInputByMatch, setMediaInputByMatch] = useState({});
   const [previewPhoto, setPreviewPhoto] = useState(null);
   const [gifShareStateByMatch, setGifShareStateByMatch] = useState({});
+  const [gifFileByMatch, setGifFileByMatch] = useState({});
 
   const shareMatch = async (match) => {
     const baseText = `${match.playerA} ${match.scoreA} x ${match.scoreB} ${match.playerB} | Matchday Ledger`;
@@ -6070,31 +6075,52 @@ function ResultsManagement({
   };
 
   const shareMatchGif = async (match) => {
-    if (gifShareStateByMatch[match.id] === "loading") return;
-    setGifShareStateByMatch((current) => ({ ...current, [match.id]: "loading" }));
+    const matchId = match.id;
+    const currentState = gifShareStateByMatch[matchId] || "idle";
+    if (currentState === "loading" || currentState === "sharing") return;
 
-    try {
-      const result = await shareProvocativeResultGif(match, players);
-      setGifShareStateByMatch((current) => ({ ...current, [match.id]: result }));
-      window.setTimeout(() => {
-        setGifShareStateByMatch((current) => ({ ...current, [match.id]: "idle" }));
-      }, 2600);
-    } catch (error) {
-      if (error?.name !== "AbortError") {
-        console.error("Falha ao partilhar GIF provocador do resultado", error);
-        setGifShareStateByMatch((current) => ({ ...current, [match.id]: "error" }));
+    const preparedFile = gifFileByMatch[matchId];
+    if (preparedFile) {
+      setGifShareStateByMatch((current) => ({ ...current, [matchId]: "sharing" }));
+      try {
+        const result = await sharePreparedProvocativeResultGif(match, preparedFile);
+        setGifShareStateByMatch((current) => ({ ...current, [matchId]: result }));
         window.setTimeout(() => {
-          setGifShareStateByMatch((current) => ({ ...current, [match.id]: "idle" }));
-        }, 2800);
-      } else {
-        setGifShareStateByMatch((current) => ({ ...current, [match.id]: "idle" }));
+          setGifShareStateByMatch((current) => ({ ...current, [matchId]: "ready" }));
+        }, 2600);
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          console.error("Falha ao partilhar GIF provocador do resultado", error);
+          setGifShareStateByMatch((current) => ({ ...current, [matchId]: "error" }));
+          window.setTimeout(() => {
+            setGifShareStateByMatch((current) => ({ ...current, [matchId]: "ready" }));
+          }, 2800);
+        } else {
+          setGifShareStateByMatch((current) => ({ ...current, [matchId]: "ready" }));
+        }
       }
+      return;
+    }
+
+    setGifShareStateByMatch((current) => ({ ...current, [matchId]: "loading" }));
+    try {
+      const file = await buildProvocativeResultGifFile(match, players);
+      setGifFileByMatch((current) => ({ ...current, [matchId]: file }));
+      setGifShareStateByMatch((current) => ({ ...current, [matchId]: "ready" }));
+    } catch (error) {
+      console.error("Falha ao gerar GIF provocador do resultado", error);
+      setGifShareStateByMatch((current) => ({ ...current, [matchId]: "error" }));
+      window.setTimeout(() => {
+        setGifShareStateByMatch((current) => ({ ...current, [matchId]: "idle" }));
+      }, 2800);
     }
   };
 
   const getResultGifLabel = (matchId) => {
     const state = gifShareStateByMatch[matchId] || "idle";
     if (state === "loading") return "A GERAR GIF...";
+    if (state === "ready") return "TOCAR PARA PARTILHAR";
+    if (state === "sharing") return "A PARTILHAR...";
     if (state === "shared") return "GIF PARTILHADO";
     if (state === "downloaded") return "GIF GUARDADO";
     if (state === "error") return "TENTAR GIF NOVAMENTE";
@@ -6276,7 +6302,7 @@ function ResultsManagement({
                     <button
                       type="button"
                       onClick={() => shareMatchGif(match)}
-                      disabled={gifShareStateByMatch[match.id] === "loading"}
+                      disabled={gifShareStateByMatch[match.id] === "loading" || gifShareStateByMatch[match.id] === "sharing"}
                       className="md-step-btn rounded-lg py-2 text-xs font-oswald flex items-center justify-center gap-1 md-touch-target disabled:opacity-60"
                       aria-label={`Partilhar GIF provocador do resultado ${match.playerA} ${match.scoreA} a ${match.scoreB} ${match.playerB}`}
                     >
