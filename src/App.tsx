@@ -1,11 +1,7 @@
 import { createPortal } from "react-dom";
-import { jsPDF } from "jspdf";
-import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { initializeApp } from "firebase/app";
 import { Capacitor } from "@capacitor/core";
-import { PushNotifications } from "@capacitor/push-notifications";
-import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -384,9 +380,8 @@ function ColorSettings({
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
-import { deleteToken, getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 import {
   Trophy,
   Swords,
@@ -421,6 +416,33 @@ import {
   ArrowUp,
   MoreHorizontal,
 } from "lucide-react";
+
+// Keep specialist features out of the opening bundle. They are downloaded only
+// when the user creates a PDF/GIF, enables push, or uses native speech.
+let pdfLibraryPromise: Promise<typeof import("jspdf")> | null = null;
+let gifLibraryPromise: Promise<typeof import("gifenc")> | null = null;
+let messagingLibraryPromise: Promise<typeof import("firebase/messaging")> | null = null;
+let pushLibraryPromise: Promise<typeof import("@capacitor/push-notifications")> | null = null;
+let speechLibraryPromise: Promise<typeof import("@capacitor-community/text-to-speech")> | null = null;
+
+const loadPdfLibrary = () => (pdfLibraryPromise ||= import("jspdf"));
+const loadGifLibrary = () => (gifLibraryPromise ||= import("gifenc"));
+const loadMessagingLibrary = () => (messagingLibraryPromise ||= import("firebase/messaging"));
+const loadPushNotifications = async () => (await (pushLibraryPromise ||= import("@capacitor/push-notifications"))).PushNotifications;
+const loadTextToSpeech = async () => (await (speechLibraryPromise ||= import("@capacitor-community/text-to-speech"))).TextToSpeech;
+
+const PushNotifications = {
+  checkPermissions: async () => (await loadPushNotifications()).checkPermissions(),
+  requestPermissions: async () => (await loadPushNotifications()).requestPermissions(),
+  register: async () => (await loadPushNotifications()).register(),
+  unregister: async () => (await loadPushNotifications()).unregister(),
+  addListener: async (eventName, listener) => (await loadPushNotifications()).addListener(eventName as any, listener),
+};
+
+const TextToSpeech = {
+  stop: async () => (await loadTextToSpeech()).stop(),
+  speak: async (options) => (await loadTextToSpeech()).speak(options),
+};
 
 /* ============================================================
    MATCHDAY LEDGER — eFootball group stats tracker
@@ -1703,7 +1725,11 @@ function estimateChampionProbabilities(players, matches, activeLeague) {
     })
   );
 
-  const iterations = 240;
+  // This is an estimate shown in the UI; a lighter sample avoids blocking the
+  // competition screen on phones while preserving useful relative odds.
+  const mobileDevice = typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
+  const iterations = mobileDevice ? 96 : 180;
+  remaining = Math.min(remaining, 120);
   const winners = Object.fromEntries(players.map((p) => [p.name, 0]));
   const names = players.map((p) => p.name);
 
@@ -1924,7 +1950,8 @@ function competitionReportFilename(item) {
   return `relatorio-${slug || "torneio"}-${item?.id || "final"}.pdf`;
 }
 
-function createCompetitionPdfBlob(item) {
+async function createCompetitionPdfBlob(item) {
+  const { jsPDF } = await loadPdfLibrary();
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const standings = Array.isArray(item?.standings) ? item.standings : [];
   const matches = Array.isArray(item?.matches) ? item.matches : [];
@@ -2210,8 +2237,8 @@ function createCompetitionPdfBlob(item) {
   return doc.output("blob");
 }
 
-function downloadCompetitionPdf(item) {
-  const blob = createCompetitionPdfBlob(item);
+async function downloadCompetitionPdf(item) {
+  const blob = await createCompetitionPdfBlob(item);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -2225,7 +2252,7 @@ function downloadCompetitionPdf(item) {
 }
 
 async function shareCompetitionPdf(item) {
-  const blob = createCompetitionPdfBlob(item);
+  const blob = await createCompetitionPdfBlob(item);
   const file = new File([blob], competitionReportFilename(item), { type: "application/pdf" });
   if (navigator.canShare?.({ files: [file] })) {
     await navigator.share({
@@ -2235,7 +2262,7 @@ async function shareCompetitionPdf(item) {
     });
     return "shared";
   }
-  downloadCompetitionPdf(item);
+  await downloadCompetitionPdf(item);
   return "downloaded";
 }
 
@@ -2343,11 +2370,31 @@ function getPresenceDocKey(groupCode, playerId) {
   return `presence:${String(groupCode || "").toUpperCase()}:${String(playerId || "").trim()}`;
 }
 
+const pendingGroupCacheJobs = new Map<string, { kind: "idle" | "timeout"; id: number }>();
+
 function cacheGroupLocally(code, data) {
-  try {
-    if (!code || !data || typeof window === "undefined") return;
-    window.localStorage.setItem(getGroupCacheKey(code), JSON.stringify(data));
-  } catch {}
+  if (!code || !data || typeof window === "undefined") return;
+  const cacheKey = getGroupCacheKey(code);
+  const previous = pendingGroupCacheJobs.get(cacheKey);
+  if (previous) {
+    if (previous.kind === "idle") (window as any).cancelIdleCallback?.(previous.id);
+    else window.clearTimeout(previous.id);
+  }
+
+  const writeCache = () => {
+    pendingGroupCacheJobs.delete(cacheKey);
+    try {
+      window.localStorage.setItem(cacheKey, JSON.stringify(data));
+    } catch {}
+  };
+
+  if (typeof (window as any).requestIdleCallback === "function") {
+    const id = (window as any).requestIdleCallback(writeCache, { timeout: 1200 });
+    pendingGroupCacheJobs.set(cacheKey, { kind: "idle", id });
+  } else {
+    const id = window.setTimeout(writeCache, 40);
+    pendingGroupCacheJobs.set(cacheKey, { kind: "timeout", id });
+  }
 }
 
 function readCachedGroup(code) {
@@ -2376,7 +2423,7 @@ function isPresenceOnline(entry) {
   if (entry.status !== "online") return false;
   const lastSeenAt = Number(entry.lastSeenAt || 0);
   if (!lastSeenAt) return false;
-  return Date.now() - lastSeenAt < 30000;
+  return Date.now() - lastSeenAt < 75000;
 }
 
 function hasMeaningfulGroupChange(prev, next) {
@@ -2893,15 +2940,17 @@ function MainApp() {
 
   const lastSeenCount = useRef(0);
   const lastSeenMessages = useRef(0);
-  const pollRef = useRef(null);
   const lastScrollYRef = useRef(0);
+  const headerHiddenRef = useRef(false);
   const finalizingLeagueRef = useRef(false);
   const pushSetupRef = useRef(false);
   const nativePushTokenRef = useRef("");
   const nativePushWaiterRef = useRef<null | { resolve: (token: string) => void; reject: (error: Error) => void }>(null);
   const tabRef = useRef(tab);
+  const notificationStateRef = useRef(notificationState);
   const presenceHeartbeatRef = useRef(0);
   const presenceEntryRef = useRef({});
+  const presenceOnlineStateRef = useRef<Record<string, boolean>>({});
   const presencePlayersRef = useRef([]);
   const presenceRefreshRef = useRef(null);
   const myNameRef = useRef(myName);
@@ -2915,6 +2964,10 @@ function MainApp() {
   useEffect(() => {
     tabRef.current = tab;
   }, [tab]);
+
+  useEffect(() => {
+    notificationStateRef.current = notificationState;
+  }, [notificationState]);
 
   useEffect(() => {
     (async () => {
@@ -3090,6 +3143,7 @@ function MainApp() {
 
   useEffect(() => {
     presenceEntryRef.current = {};
+    presenceOnlineStateRef.current = {};
     setPresenceMap({});
   }, [groupCode]);
 
@@ -3111,7 +3165,17 @@ function MainApp() {
 
       if (cancelled) return;
       const nextMap = Object.fromEntries(entries.filter(([id]) => Boolean(id)));
-      setPresenceMap(nextMap);
+      const nextOnlineState = Object.fromEntries(
+        Object.entries(nextMap).map(([id, entry]) => [id, isPresenceOnline(entry)]),
+      );
+      const previousOnlineState = presenceOnlineStateRef.current;
+      const nextIds = Object.keys(nextOnlineState);
+      const statusChanged = nextIds.length !== Object.keys(previousOnlineState).length
+        || nextIds.some((id) => nextOnlineState[id] !== previousOnlineState[id]);
+      if (statusChanged) {
+        presenceOnlineStateRef.current = nextOnlineState;
+        setPresenceMap(nextMap);
+      }
     };
 
     const writeOwnPresence = async (status) => {
@@ -3127,7 +3191,11 @@ function MainApp() {
     };
 
     const heartbeat = async () => {
-      await writeOwnPresence(document.visibilityState === "visible" ? "online" : "offline");
+      if (document.visibilityState !== "visible") {
+        await writeOwnPresence("offline");
+        return;
+      }
+      await writeOwnPresence("online");
       await refreshPresence();
     };
 
@@ -3135,13 +3203,14 @@ function MainApp() {
 
     void heartbeat();
     const timer = window.setInterval(() => {
-      if (Date.now() - presenceHeartbeatRef.current < 5000) return;
+      if (Date.now() - presenceHeartbeatRef.current < 15000) return;
       presenceHeartbeatRef.current = Date.now();
       void heartbeat();
-    }, 12000);
+    }, 30000);
 
     const handleVisibilityChange = () => {
-      void writeOwnPresence(document.visibilityState === "visible" ? "online" : "offline");
+      if (document.visibilityState === "visible") void heartbeat();
+      else void writeOwnPresence("offline");
     };
 
     const handleBeforeUnload = () => {
@@ -3195,20 +3264,26 @@ function MainApp() {
   }, [groupData?.adminUids, authUid]);
 
   useEffect(() => {
+    const updateHeaderVisibility = (hidden) => {
+      if (headerHiddenRef.current === hidden) return;
+      headerHiddenRef.current = hidden;
+      setHeaderHidden(hidden);
+    };
+
     const onScroll = () => {
       const y = window.scrollY || 0;
 
       if (window.matchMedia("(max-width: 639px)").matches) {
-        setHeaderHidden(false);
+        updateHeaderVisibility(false);
         lastScrollYRef.current = y;
         return;
       }
 
       const last = lastScrollYRef.current;
       if (y > last && y > 90) {
-        setHeaderHidden(true);
+        updateHeaderVisibility(true);
       } else {
-        setHeaderHidden(false);
+        updateHeaderVisibility(false);
       }
       lastScrollYRef.current = y;
     };
@@ -3219,16 +3294,20 @@ function MainApp() {
 
   useEffect(() => {
     if (phase !== "app" || !groupCode) return;
-    pollRef.current = setInterval(async () => {
-      const raw = await storageGet(`group:${groupCode}`, true);
-      if (!raw) return;
+    let disposed = false;
+    let fallbackTimer = 0;
+
+    const applyRemoteGroup = (storedValue) => {
+      if (!storedValue || disposed) return;
       try {
-        const parsed = normalizeGroupData(JSON.parse(raw));
+        const parsed = normalizeGroupData(
+          typeof storedValue === "string" ? JSON.parse(storedValue) : storedValue,
+        );
         if (parsed.matches.length > lastSeenCount.current) {
           const newOnes = parsed.matches.slice(lastSeenCount.current);
           newOnes.forEach((m) => {
-            if (m.recordedBy !== myName) {
-              if (notificationState !== "active") {
+            if (m.recordedBy !== myNameRef.current) {
+              if (notificationStateRef.current !== "active") {
                 pushToast({
                   title: `${m.recordedBy} registrou uma partida`,
                   body: `${m.playerA} ${m.scoreA} x ${m.scoreB} ${m.playerB}`,
@@ -3240,8 +3319,8 @@ function MainApp() {
         }
         if (parsed.messages.length > lastSeenMessages.current) {
           const incoming = parsed.messages.slice(lastSeenMessages.current);
-          const fromOthers = incoming.filter((msg) => msg.from !== myName).length;
-          if (fromOthers > 0 && tab !== "chat") {
+          const fromOthers = incoming.filter((msg) => msg.from !== myNameRef.current).length;
+          if (fromOthers > 0 && tabRef.current !== "chat") {
             setUnreadChat((v) => v + fromOthers);
           }
         }
@@ -3253,9 +3332,39 @@ function MainApp() {
           return parsed;
         });
       } catch {}
-    }, 4000);
-    return () => clearInterval(pollRef.current);
-  }, [phase, groupCode, myName, tab, notificationState]);
+    };
+
+    const pollAsFallback = async () => {
+      if (disposed) return;
+      if (document.visibilityState === "visible") {
+        const raw = await storageGet(`group:${groupCode}`, true);
+        applyRemoteGroup(raw);
+      }
+      if (!disposed) fallbackTimer = window.setTimeout(pollAsFallback, 15000);
+    };
+
+    let unsubscribe = () => {};
+    if (db) {
+      const groupRef = doc(db, "sharedStorage", encodeURIComponent(`group:${groupCode}`));
+      unsubscribe = onSnapshot(
+        groupRef,
+        (snapshot) => {
+          if (snapshot.exists()) applyRemoteGroup(snapshot.data().value ?? null);
+        },
+        () => {
+          if (!fallbackTimer) void pollAsFallback();
+        },
+      );
+    } else {
+      void pollAsFallback();
+    }
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+    };
+  }, [phase, groupCode]);
 
   useEffect(() => {
     if (tab !== "chat") return;
@@ -3364,6 +3473,7 @@ function MainApp() {
           return false;
         }
 
+        const PushNotifications = await loadPushNotifications();
         let permission = await PushNotifications.checkPermissions();
         if (permission.receive === "prompt" && requestPermission) {
           permission = await PushNotifications.requestPermissions();
@@ -3403,6 +3513,7 @@ function MainApp() {
         return true;
       }
 
+      const { getMessaging, getToken, isSupported } = await loadMessagingLibrary();
       const browserSupportsNotifications =
         typeof window !== "undefined" &&
         "Notification" in window &&
@@ -3496,13 +3607,15 @@ function MainApp() {
     try {
       if (IS_NATIVE_APP && HAS_NATIVE_PUSH) {
         try {
+          const PushNotifications = await loadPushNotifications();
           await PushNotifications.unregister();
         } catch (error) {
           console.warn("Não foi possível desregistar o push nativo.", error);
         }
-      } else if (firebaseApp && await isSupported()) {
+      } else if (firebaseApp) {
         try {
-          await deleteToken(getMessaging(firebaseApp));
+          const { deleteToken, getMessaging, isSupported } = await loadMessagingLibrary();
+          if (await isSupported()) await deleteToken(getMessaging(firebaseApp));
         } catch (error) {
           console.warn("Não foi possível apagar o token local.", error);
         }
@@ -3527,6 +3640,7 @@ function MainApp() {
           setNotificationState("unsupported");
           return;
         }
+        const PushNotifications = await loadPushNotifications();
         const permission = await PushNotifications.checkPermissions();
         if (permission.receive === "denied") {
           setNotificationState("blocked");
@@ -3637,7 +3751,8 @@ function MainApp() {
     let unsubscribe = () => {};
     let cancelled = false;
 
-    isSupported().then((supported) => {
+    loadMessagingLibrary().then(async ({ getMessaging, isSupported, onMessage }) => {
+      const supported = await isSupported();
       if (!supported || cancelled) return;
       unsubscribe = onMessage(getMessaging(firebaseApp), (payload) => {
         const data = payload.data || {};
@@ -3655,7 +3770,7 @@ function MainApp() {
       cancelled = true;
       unsubscribe();
     };
-  }, [phase, tab]);
+  }, [phase]);
 
   useEffect(() => {
     if (IS_NATIVE_APP) return;
@@ -5325,7 +5440,7 @@ function ChatRoom({ messages, myName, players, onSendMessage }) {
           {messages.map((message) => {
             const mine = message.from === myName;
             return (
-              <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div key={message.id} className={`md-deferred-card flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[82%] rounded-2xl px-3 py-2 border ${mine ? "md-bg-amber-15 md-border-line" : "md-bg-panel-dark md-border-line"}`}>
                   <div className="flex items-center justify-between gap-3 mb-1">
                     <NameWithEmblem
@@ -5959,6 +6074,7 @@ function drawProvocativeResultGifFrame(ctx, payload, progress) {
 
 
 async function buildProvocativeResultGifFile(match, players) {
+  const { GIFEncoder, quantize, applyPalette } = await loadGifLibrary();
   const canvas = document.createElement("canvas");
   canvas.width = 420;
   canvas.height = 700;
@@ -6191,7 +6307,7 @@ function ResultsManagement({
         <div className="space-y-2">
           {matches.length === 0 && <p className="md-text-muted text-sm">Nenhuma partida registrada ainda.</p>}
           {[...matches].reverse().map((match) => (
-            <div key={match.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
+            <div key={match.id} className="md-deferred-card rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
               {editingId === match.id ? (
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
@@ -6365,7 +6481,7 @@ function ResultsManagement({
         )}
         <div className="space-y-2">
           {[...(deletedMatches || [])].reverse().map((entry) => (
-            <div key={entry.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
+            <div key={entry.id} className="md-deferred-card rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
               <p className="font-oswald text-sm md-text-bone">
                 {entry?.match?.playerA || "?"} {Number(entry?.match?.scoreA || 0)}-{Number(entry?.match?.scoreB || 0)} {entry?.match?.playerB || "?"}
               </p>
@@ -6408,7 +6524,7 @@ function ResultsManagement({
         )}
         <div className="space-y-2">
           {(backups || []).map((backup) => (
-            <div key={backup.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
+            <div key={backup.id} className="md-deferred-card rounded-lg px-3 py-3 md-bg-panel-dark-40 space-y-2">
               <p className="font-oswald text-sm md-text-bone">
                 {String(backup.reason || "snapshot").toUpperCase()}
               </p>
@@ -6497,7 +6613,7 @@ function ScheduleBoard({ schedules, onAddSchedule, onDeleteSchedule }) {
         <div className="space-y-2">
           {ordered.length === 0 && <p className="md-text-muted text-sm">Nenhum jogo agendado ainda.</p>}
           {ordered.map((item) => (
-            <div key={item.id} className="rounded-lg px-3 py-3 md-bg-panel-dark-40">
+            <div key={item.id} className="md-deferred-card rounded-lg px-3 py-3 md-bg-panel-dark-40">
               <p className="font-oswald text-sm md-text-bone">{item.title}</p>
               <p className="text-xs md-text-muted mt-1 flex items-center gap-2">
                 <Clock3 size={12} /> {new Date(item.whenTs).toLocaleString("pt-BR")}
@@ -6537,7 +6653,7 @@ function LogMatch({ players, matches, myName, onSubmit }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const audio = new Audio("/sounds/you-wim.mp3");
-    audio.preload = "auto";
+    audio.preload = "none";
     audio.volume = 1;
     winAudioRef.current = audio;
     return () => {
@@ -6709,12 +6825,12 @@ function LogMatch({ players, matches, myName, onSubmit }) {
     if (a !== myName) setA(myName);
   }, [myName, a]);
 
-  const options = players
+  const options = useMemo(() => players
     .map((p) => p.name)
-    .filter((name) => String(name || "").trim().toLowerCase() !== String(myName || "").trim().toLowerCase());
-  const rankedPlayers = computeStats(players, matches).sort(
+    .filter((name) => String(name || "").trim().toLowerCase() !== String(myName || "").trim().toLowerCase()), [players, myName]);
+  const rankedPlayers = useMemo(() => computeStats(players, matches).sort(
     (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.wins - a.wins || b.gf - a.gf
-  );
+  ), [players, matches]);
   const canSubmit = myName && b && String(myName).trim().toLowerCase() !== String(b).trim().toLowerCase();
 
   const submit = async () => {
@@ -6777,7 +6893,7 @@ function LogMatch({ players, matches, myName, onSubmit }) {
 
         <div className="space-y-2">
           {rankedPlayers.map((entry, idx) => (
-            <div key={entry.name} className="md-player-rank-row rounded-lg px-3 py-3 md-bg-panel-dark-40">
+            <div key={entry.name} className="md-deferred-card md-player-rank-row rounded-lg px-3 py-3 md-bg-panel-dark-40">
               <div className="md-player-rank-identity flex items-center gap-2 min-w-0">
                 <span className="md-player-rank-position font-oswald text-xs md-text-amber shrink-0">#{idx + 1}</span>
                 <NameWithEmblem
@@ -7527,6 +7643,7 @@ function drawAchievementGifFrame(ctx, { item, playerName, playerGoals, meta, emb
 }
 
 async function buildAchievementGifFile({ item, playerName, emblemId, playerGoals }) {
+  const { GIFEncoder, quantize, applyPalette } = await loadGifLibrary();
   const canvas = document.createElement("canvas");
   canvas.width = 420;
   canvas.height = 700;
@@ -7666,7 +7783,7 @@ function AchievementCard({ item, playerName, emblemId, playerGoals, index, expan
     "PARTILHAR GIF ANIMADO";
 
   return (
-    <div className="md-achievement-card-wrap">
+    <div className="md-deferred-card md-achievement-card-wrap">
       <button
         type="button"
         className={`md-achievement-card ${expanded ? "is-open" : ""}`}
@@ -7836,7 +7953,7 @@ function LeagueManager({
         return;
       }
       if (result?.archiveEntry) {
-        downloadCompetitionPdf(result.archiveEntry);
+        await downloadCompetitionPdf(result.archiveEntry);
         setReportStatus("Torneio terminado. O PDF foi gerado e tambem fica disponivel no historico.");
       }
     } catch {
@@ -7859,11 +7976,11 @@ function LeagueManager({
     }
   };
 
-  const handleDownloadPdf = (item) => {
+  const handleDownloadPdf = async (item) => {
     setError("");
     setReportStatus("");
     try {
-      downloadCompetitionPdf(item);
+      await downloadCompetitionPdf(item);
       setReportStatus("PDF descarregado.");
     } catch {
       setError("Nao foi possivel gerar o PDF desta competicao.");
