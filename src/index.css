@@ -1120,3 +1120,37 @@ body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
     transition: none !important;
   }
 }
+
+/* Long feeds are painted only as they approach the viewport. This is especially
+   helpful for result histories containing photos and for achievement collections. */
+.md-deferred-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 180px;
+}
+
+@media (max-width: 639px) {
+  /* Preserve the 3D styling but avoid dozens of simultaneous decorative loops. */
+  .md-emblem-3d__shine,
+  .md-emblem-3d__spark,
+  .md-achievement-card__foil,
+  .md-achievement-card__aura,
+  .md-anim-logo-blink,
+  .md-anim-trophy-rise-drop,
+  .md-world-cup-trophy::after {
+    animation: none !important;
+  }
+
+  /* Full-screen blur is costly on iPhone GPUs, particularly during scrolling. */
+  .md-app-shell > header,
+  .md-tabs-row,
+  .md-mobile-bottom-nav-inner,
+  .md-mobile-more-menu,
+  .md-settings-modal {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .md-deferred-card {
+    contain-intrinsic-size: 1px 220px;
+  }
+}
