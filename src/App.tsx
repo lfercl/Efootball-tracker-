@@ -1225,6 +1225,30 @@ async function prepareGroupForFirestore(data) {
       nextMatches.push({ ...match, media: nextMedia });
     }
 
+    const nextLeagueHistory = [];
+    for (const league of prepared.leagueHistory || []) {
+      const nextArchivedMatches = [];
+      for (const match of league?.matches || []) {
+        const nextMedia = [];
+        for (const item of match?.media || []) {
+          const mediaItem = String(item || "");
+          if (mediaItem.startsWith("data:image/") && mediaItem.length > targetChars) {
+            try {
+              const compacted = await shrinkImageDataUrl(mediaItem, targetChars);
+              nextMedia.push(compacted);
+              if (compacted.length < mediaItem.length) changed = true;
+            } catch {
+              nextMedia.push(mediaItem);
+            }
+          } else {
+            nextMedia.push(mediaItem);
+          }
+        }
+        nextArchivedMatches.push({ ...match, media: nextMedia });
+      }
+      nextLeagueHistory.push({ ...league, matches: nextArchivedMatches });
+    }
+
     const nextMessages = [];
     for (const message of prepared.messages || []) {
       const mediaItem = String(message?.mediaDataUrl || "");
@@ -1245,6 +1269,7 @@ async function prepareGroupForFirestore(data) {
       prepared = {
         ...prepared,
         matches: nextMatches,
+        leagueHistory: nextLeagueHistory,
         messages: nextMessages,
       };
     }
@@ -1255,6 +1280,15 @@ async function prepareGroupForFirestore(data) {
 
   if (prepared.backups.length) {
     prepared = { ...prepared, backups: [] };
+  }
+  if (estimateJsonSize(prepared) > FIRESTORE_GROUP_SAFE_CHARS) {
+    prepared = {
+      ...prepared,
+      leagueHistory: (prepared.leagueHistory || []).map((league) => ({
+        ...league,
+        matches: (league?.matches || []).map((match) => stripMatchMedia(match)),
+      })),
+    };
   }
   return prepared;
 }
@@ -1652,7 +1686,26 @@ function normalizeGroupData(data) {
             startMatchCount: Number(data.activeLeague.startMatchCount || 0),
           }
         : null,
-    leagueHistory: Array.isArray(data?.leagueHistory) ? data.leagueHistory : [],
+    leagueHistory: Array.isArray(data?.leagueHistory)
+      ? data.leagueHistory.map((league) => ({
+          ...league,
+          playerEmblems: {
+            ...Object.fromEntries(
+              (data?.players || []).map((player) => [player?.name || "", player?.emblemId || ""]),
+            ),
+            ...(league?.playerEmblems && typeof league.playerEmblems === "object"
+              ? league.playerEmblems
+              : {}),
+          },
+          matches: Array.isArray(league?.matches)
+            ? league.matches.map((match) => ({
+                ...match,
+                media: Array.isArray(match?.media) ? match.media : [],
+                votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
+              }))
+            : [],
+        }))
+      : [],
   };
 }
 
@@ -1950,6 +2003,31 @@ function competitionReportFilename(item) {
   return `relatorio-${slug || "torneio"}-${item?.id || "final"}.pdf`;
 }
 
+async function loadPdfEmblemDataUrl(emblemId) {
+  const emblemUrl = EMBLEM_MAP[emblemId]?.url;
+  if (!emblemUrl || typeof document === "undefined") return "";
+
+  try {
+    const image = await loadImage(emblemUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+
+    const sourceWidth = Math.max(1, image.naturalWidth || image.width || 1);
+    const sourceHeight = Math.max(1, image.naturalHeight || image.height || 1);
+    const scale = Math.min(220 / sourceWidth, 220 / sourceHeight);
+    const width = sourceWidth * scale;
+    const height = sourceHeight * scale;
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.drawImage(image, (256 - width) / 2, (256 - height) / 2, width, height);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return "";
+  }
+}
+
 async function createCompetitionPdfBlob(item) {
   const { jsPDF } = await loadPdfLibrary();
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -1959,13 +2037,13 @@ async function createCompetitionPdfBlob(item) {
   const pageWidth = 210;
   const pageHeight = 297;
   const margin = 14;
-  const navy = [5, 9, 47];
-  const blue = [25, 52, 170];
-  const yellow = [231, 255, 0];
-  const ink = [15, 23, 42];
-  const muted = [91, 105, 128];
-  const line = [219, 226, 239];
-  const white = [255, 255, 255];
+  const navy: [number, number, number] = [5, 9, 47];
+  const blue: [number, number, number] = [25, 52, 170];
+  const yellow: [number, number, number] = [231, 255, 0];
+  const ink: [number, number, number] = [15, 23, 42];
+  const muted: [number, number, number] = [91, 105, 128];
+  const line: [number, number, number] = [219, 226, 239];
+  const white: [number, number, number] = [255, 255, 255];
   const finishedAt = Number(item?.finishedAt || Date.now());
   const champion = item?.champion || standings[0] || {};
   const totalGoals = matches.length
@@ -1977,6 +2055,40 @@ async function createCompetitionPdfBlob(item) {
   const bestAttack = [...standings].sort((a, b) => Number(b.gf || 0) - Number(a.gf || 0))[0];
   const played = standings.filter((entry) => Number(entry.played || 0) > 0);
   const bestDefense = [...played].sort((a, b) => Number(a.ga || 0) - Number(b.ga || 0))[0];
+  const playerEmblems = item?.playerEmblems && typeof item.playerEmblems === "object"
+    ? item.playerEmblems
+    : {};
+  const championEmblemId = champion?.emblemId || playerEmblems[champion?.name] || "";
+  const emblemIds = [...new Set([
+    championEmblemId,
+    ...standings.map((entry) => playerEmblems[entry?.name] || ""),
+  ].filter(Boolean))];
+  const pdfEmblems = {};
+  await Promise.all(emblemIds.map(async (emblemId) => {
+    pdfEmblems[emblemId] = await loadPdfEmblemDataUrl(emblemId);
+  }));
+
+  const emblemIdForPlayer = (name) => {
+    if (name === champion?.name && championEmblemId) return championEmblemId;
+    return playerEmblems[name] || "";
+  };
+
+  const drawPlayerEmblem = (name, x, y, size, explicitEmblemId = "") => {
+    const emblemId = explicitEmblemId || emblemIdForPlayer(name);
+    const imageData = pdfEmblems[emblemId];
+    doc.setFillColor(244, 247, 252);
+    doc.setDrawColor(...line);
+    doc.circle(x + size / 2, y + size / 2, size / 2, "FD");
+    if (imageData) {
+      doc.addImage(imageData, "PNG", x + 0.8, y + 0.8, size - 1.6, size - 1.6, undefined, "FAST");
+      return;
+    }
+
+    doc.setTextColor(...navy);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(Math.max(5, size * 1.1));
+    doc.text(initials(name || "?"), x + size / 2, y + size * 0.67, { align: "center" });
+  };
 
   doc.setProperties({
     title: `Relatorio oficial - ${cleanPdfText(item?.name || "Competicao")}`,
@@ -2034,26 +2146,27 @@ async function createCompetitionPdfBlob(item) {
   doc.setTextColor(202, 212, 255);
   doc.text(`Encerrado em ${new Date(finishedAt).toLocaleString("pt-PT")}`, margin, 75);
 
-  doc.setFillColor(246, 248, 255);
-  doc.setDrawColor(111, 132, 230);
+  doc.setFillColor(248, 250, 253);
+  doc.setDrawColor(...line);
   doc.roundedRect(margin, 91, 182, 35, 3, 3, "FD");
+  drawPlayerEmblem(champion?.name || "Campeao", margin + 7, 98, 20, championEmblemId);
   doc.setTextColor(...blue);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.text("CAMPEAO", margin + 7, 102);
+  doc.text("CAMPEAO", margin + 33, 101);
   doc.setTextColor(...navy);
   doc.setFontSize(19);
-  doc.text(cleanPdfText(champion?.name || "Campeao"), margin + 7, 114);
+  doc.text(cleanPdfText(champion?.name || "Campeao"), margin + 33, 113);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...muted);
   doc.text(
     `${Number(champion?.points || 0)} pontos | ${Number(champion?.wins || 0)} vitorias | Premio: ${cleanPdfText(item?.prize || "Nao informado")}`,
-    margin + 7,
-    121,
+    margin + 33,
+    120,
   );
 
-  const tiles = [
+  const tiles: Array<[string, string]> = [
     ["JOGOS", String(Number(item?.matchesCount || matches.length || 0))],
     ["GOLS", String(totalGoals)],
     ["MEDIA / JOGO", matches.length ? (totalGoals / matches.length).toFixed(2) : "0.00"],
@@ -2074,17 +2187,15 @@ async function createCompetitionPdfBlob(item) {
   });
 
   let y = sectionTitle("Classificacao final", 171);
-  const columns = [
-    ["#", 9],
-    ["JOGADOR", 53],
-    ["J", 13],
-    ["V", 13],
-    ["E", 13],
-    ["D", 13],
-    ["GP", 14],
-    ["GC", 14],
-    ["SG", 15],
-    ["PTS", 19],
+  const columns: Array<[string, number]> = [
+    ["#", 10],
+    ["JOGADOR", 76],
+    ["J", 15],
+    ["V", 15],
+    ["E", 15],
+    ["D", 15],
+    ["SG", 16],
+    ["PTS", 20],
   ];
   const drawStandingsHeader = () => {
     let x = margin;
@@ -2104,13 +2215,13 @@ async function createCompetitionPdfBlob(item) {
   drawStandingsHeader();
 
   standings.forEach((entry, index) => {
-    if (y > 270) {
+    if (y > 267) {
       y = addPage("CLASSIFICACAO FINAL");
       drawStandingsHeader();
     }
     let x = margin;
     doc.setFillColor(index % 2 === 0 ? 247 : 255, index % 2 === 0 ? 249 : 255, 253);
-    doc.rect(margin, y, 182, 8, "F");
+    doc.rect(margin, y, 182, 10, "F");
     doc.setTextColor(...ink);
     doc.setFont("helvetica", index === 0 ? "bold" : "normal");
     doc.setFontSize(7.3);
@@ -2121,27 +2232,28 @@ async function createCompetitionPdfBlob(item) {
       Number(entry.wins || 0),
       Number(entry.draws || 0),
       Number(entry.losses || 0),
-      Number(entry.gf || 0),
-      Number(entry.ga || 0),
-      Number(entry.gd || 0),
+      Number(entry.goalDiff ?? entry.gd ?? 0),
       Number(entry.points || 0),
     ];
     values.forEach((value, valueIndex) => {
       const width = columns[valueIndex][1];
-      doc.text(String(value), valueIndex === 1 ? x + 2 : x + width / 2, y + 5.3, {
+      if (valueIndex === 1) {
+        drawPlayerEmblem(entry.name, x + 2, y + 1.3, 7.3);
+      }
+      doc.text(String(value), valueIndex === 1 ? x + 12 : x + width / 2, y + 6.3, {
         align: valueIndex === 1 ? "left" : "center",
       });
       x += width;
     });
     doc.setDrawColor(...line);
-    doc.line(margin, y + 8, 196, y + 8);
-    y += 8;
+    doc.line(margin, y + 10, 196, y + 10);
+    y += 10;
   });
 
   y += 7;
   if (y > 250) y = addPage("DESTAQUES");
   y = sectionTitle("Destaques do torneio", y);
-  const highlights = [
+  const highlights: Array<[string, string]> = [
     ["Melhor ataque", bestAttack ? `${cleanPdfText(bestAttack.name)} - ${Number(bestAttack.gf || 0)} gols` : "Sem dados"],
     ["Melhor defesa", bestDefense ? `${cleanPdfText(bestDefense.name)} - ${Number(bestDefense.ga || 0)} sofridos` : "Sem dados"],
     ["Maior pontuacao", champion?.name ? `${cleanPdfText(champion.name)} - ${Number(champion.points || 0)} pontos` : "Sem dados"],
@@ -2166,20 +2278,63 @@ async function createCompetitionPdfBlob(item) {
   y += 44;
 
   if (achievements.length) {
-    if (y > 245) y = addPage("PREMIOS E CONQUISTAS");
-    y = sectionTitle("Premios e conquistas", y);
-    achievements.forEach((award) => {
-      if (y > 272) y = addPage("PREMIOS E CONQUISTAS");
-      doc.setFillColor(248, 250, 255);
-      doc.roundedRect(margin, y, 182, 9, 1.5, 1.5, "F");
-      doc.setTextColor(...blue);
+    y = addPage("CARTAS DE CONQUISTAS");
+    y = sectionTitle("Cartas de conquistas", y);
+    const awardsByPlayer = achievements.reduce((acc, award) => {
+      const playerName = award?.player || "Jogador";
+      acc[playerName] = [...(acc[playerName] || []), award];
+      return acc;
+    }, {});
+    const achievementPlayers = [
+      ...standings.map((entry) => entry.name).filter((name) => awardsByPlayer[name]?.length),
+      ...Object.keys(awardsByPlayer).filter((name) => !standings.some((entry) => entry.name === name)),
+    ];
+
+    achievementPlayers.forEach((playerName) => {
+      const playerAwards = awardsByPlayer[playerName] || [];
+      const rows = Math.ceil(playerAwards.length / 2);
+      const blockHeight = 19 + rows * 15;
+      if (y + blockHeight > 278) y = addPage("CARTAS DE CONQUISTAS");
+
+      const playerStats = standings.find((entry) => entry.name === playerName);
+      doc.setFillColor(247, 249, 253);
+      doc.roundedRect(margin, y, 182, 15, 2.5, 2.5, "F");
+      drawPlayerEmblem(playerName, margin + 4, y + 2, 11);
+      doc.setTextColor(...navy);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.text(cleanPdfText(award.player || "Jogador").slice(0, 28), margin + 4, y + 5.8);
-      doc.setTextColor(...ink);
+      doc.setFontSize(10);
+      doc.text(cleanPdfText(playerName).slice(0, 32), margin + 19, y + 6.5);
+      doc.setTextColor(...muted);
       doc.setFont("helvetica", "normal");
-      doc.text(cleanPdfText(award.title || "Conquista").slice(0, 62), margin + 61, y + 5.8);
-      y += 11;
+      doc.setFontSize(7.2);
+      doc.text(
+        `${Number(playerStats?.points || 0)} pts | ${Number(playerStats?.gf || 0)} gols | ${playerAwards.length} ${playerAwards.length === 1 ? "carta" : "cartas"}`,
+        margin + 19,
+        y + 11.5,
+      );
+      y += 18;
+
+      playerAwards.forEach((award, awardIndex) => {
+        const col = awardIndex % 2;
+        const row = Math.floor(awardIndex / 2);
+        const cardX = margin + col * 92;
+        const cardY = y + row * 15;
+        const meta = getAchievementCardMeta(award, awardIndex);
+        doc.setFillColor(255, 250, 235);
+        doc.setDrawColor(230, 190, 82);
+        doc.roundedRect(cardX, cardY, 88, 12, 2, 2, "FD");
+        doc.setFillColor(230, 190, 82);
+        doc.roundedRect(cardX, cardY, 4, 12, 2, 2, "F");
+        doc.setTextColor(...blue);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6.4);
+        doc.text(`CARTA ${Number(meta?.rating || 90)} | ${cleanPdfText(meta?.rarityLabel || "Especial").toUpperCase()}`, cardX + 7, cardY + 4.4);
+        doc.setTextColor(...ink);
+        doc.setFontSize(7.4);
+        doc.text(cleanPdfText(award?.title || "Conquista").slice(0, 41), cardX + 7, cardY + 9.2);
+      });
+
+      y += rows * 15 + 4;
     });
   }
 
@@ -2212,12 +2367,14 @@ async function createCompetitionPdfBlob(item) {
       doc.setFontSize(7.1);
       const date = Number(match.ts || 0) ? new Date(Number(match.ts)).toLocaleDateString("pt-PT") : "-";
       doc.text(date, margin + 2, y + 5.3);
-      doc.text(cleanPdfText(match.playerA || "-").slice(0, 21), margin + 32, y + 5.3);
+      drawPlayerEmblem(match.playerA || "-", margin + 28, y + 1, 6);
+      doc.text(cleanPdfText(match.playerA || "-").slice(0, 18), margin + 36, y + 5.3);
       doc.setFont("helvetica", "bold");
       doc.text(`${Number(match.scoreA || 0)} - ${Number(match.scoreB || 0)}`, margin + 93, y + 5.3, { align: "center" });
       doc.setFont("helvetica", "normal");
-      doc.text(cleanPdfText(match.playerB || "-").slice(0, 21), margin + 111, y + 5.3);
-      doc.text(cleanPdfText(match.mvp || "-").slice(0, 16), margin + 154, y + 5.3);
+      drawPlayerEmblem(match.playerB || "-", margin + 106, y + 1, 6);
+      doc.text(cleanPdfText(match.playerB || "-").slice(0, 18), margin + 114, y + 5.3);
+      doc.text(cleanPdfText(match.mvp || "-").slice(0, 14), margin + 158, y + 5.3);
       y += 8;
     });
   }
@@ -4239,23 +4396,28 @@ function MainApp() {
 
       const championEmblemId = getEmblemIdByName(groupData?.players || [], champion.name);
       const allAchievements = computeAchievements(groupData?.players || [], leagueMatches);
+      const playerEmblems = Object.fromEntries(
+        (groupData?.players || []).map((player) => [player.name, player.emblemId || ""]),
+      );
       const totalGoals = leagueMatches.reduce(
         (sum, match) => sum + Number(match.scoreA || 0) + Number(match.scoreB || 0),
         0,
       );
-      const matchSummaries = leagueMatches.map((match) => {
+      const archivedMatches = leagueMatches.map((match) => {
         const votes = getEffectiveMvpVotes(match);
         const topVote = Object.entries(votes).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
         return {
-          id: match.id,
-          playerA: match.playerA,
-          playerB: match.playerB,
+          ...match,
           scoreA: Number(match.scoreA || 0),
           scoreB: Number(match.scoreB || 0),
           ts: Number(match.ts || 0),
+          media: Array.isArray(match?.media) ? match.media : [],
+          votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
           mvp: Number(topVote?.[1] || 0) > 0 ? topVote[0] : "",
         };
       });
+      const startMatchCount = Math.max(0, Number(league.startMatchCount || 0));
+      const remainingMatches = (groupData?.matches || []).slice(0, startMatchCount);
 
       const archiveEntry = {
         id: league.id,
@@ -4273,24 +4435,31 @@ function MainApp() {
           points: champion.points,
           wins: champion.wins,
         },
+        playerEmblems,
         achievements: allAchievements,
         standings,
-        matches: matchSummaries,
+        matches: archivedMatches,
         summary: {
           totalGoals,
           draws: leagueMatches.filter((match) => Number(match.scoreA) === Number(match.scoreB)).length,
         },
       };
 
-      await saveGroup({
+      const ok = await saveGroup({
         ...groupData,
+        matches: remainingMatches,
         activeLeague: null,
         leagueHistory: [...(groupData?.leagueHistory || []), archiveEntry],
       });
+      if (!ok) {
+        const error = "Nao foi possivel guardar o arquivo da competicao.";
+        pushToast({ title: "Torneio nao terminado", body: error });
+        return { error };
+      }
 
       pushToast({
         title: "Competicao encerrada",
-        body: `${champion.name} e o campeao da ${league.name}. O PDF esta pronto.`,
+        body: `${champion.name} e o campeao da ${league.name}. Resultados e classificacao foram reiniciados.`,
       });
       return { ok: true, archiveEntry };
     } catch (error) {
@@ -4315,21 +4484,15 @@ function MainApp() {
     }
 
     const allMatches = Array.isArray(groupData?.matches) ? groupData.matches : [];
-    const archivedMatchIds = new Set(
-      (Array.isArray(archivedLeague.matches) ? archivedLeague.matches : [])
-        .map((match) => match?.id)
-        .filter(Boolean),
-    );
-    const archivedMatchIndexes = allMatches
-      .map((match, index) => (archivedMatchIds.has(match?.id) ? index : -1))
-      .filter((index) => index >= 0);
-    const fallbackStartIndex = Math.max(
-      0,
-      allMatches.length - Math.max(0, Number(archivedLeague.matchesCount || 0)),
-    );
-    const startMatchCount = archivedMatchIndexes.length
-      ? Math.min(...archivedMatchIndexes)
-      : fallbackStartIndex;
+    const existingMatchIds = new Set(allMatches.map((match) => match?.id).filter(Boolean));
+    const archivedMatches = (Array.isArray(archivedLeague.matches) ? archivedLeague.matches : [])
+      .filter((match) => !match?.id || !existingMatchIds.has(match.id))
+      .map((match) => ({
+        ...match,
+        media: Array.isArray(match?.media) ? match.media : [],
+        votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
+      }));
+    const startMatchCount = allMatches.length;
 
     const restoredLeague = {
       id: archivedLeague.id,
@@ -4349,6 +4512,7 @@ function MainApp() {
     try {
       const ok = await saveGroup({
         ...groupData,
+        matches: [...allMatches, ...archivedMatches],
         activeLeague: restoredLeague,
         leagueHistory: history.filter((item) => item?.id !== archiveId),
       });
@@ -4357,7 +4521,7 @@ function MainApp() {
       }
       pushToast({
         title: "Competicao restaurada",
-        body: `${restoredLeague.name} voltou a ficar ativa com os resultados preservados.`,
+        body: `${restoredLeague.name} voltou a ficar ativa. Resultados e classificacao foram recuperados.`,
       });
       return { ok: true, restoredLeague };
     } catch (error) {
