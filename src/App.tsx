@@ -2376,6 +2376,13 @@ async function createCompetitionPdfBlob(item) {
     const drawAchievement3dCard = (award, playerName, awardIndex, cardX, cardY) => {
       const meta = getAchievementCardMeta(award, awardIndex);
       const palette = achievementPalette(meta?.rarity);
+      const playerStats = standings.find((entry) => entry.name === playerName);
+      const goalDifference = Number(
+        playerStats?.goalDiff
+          ?? playerStats?.gd
+          ?? (Number(playerStats?.gf || 0) - Number(playerStats?.ga || 0)),
+      );
+      const formattedGoalDifference = `${goalDifference >= 0 ? "+" : ""}${goalDifference}`;
 
       setPdfFill([205, 211, 224]);
       doc.roundedRect(cardX + 3.2, cardY + 4.2, cardWidth, cardHeight, 4, 4, "F");
@@ -2397,9 +2404,9 @@ async function createCompetitionPdfBlob(item) {
       doc.setTextColor(palette.text[0], palette.text[1], palette.text[2]);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
-      doc.text(String(Number(meta?.rating || 90)), cardX + 5, cardY + 10);
+      doc.text(formattedGoalDifference, cardX + 5, cardY + 10);
       doc.setFontSize(5.2);
-      doc.text("OVR", cardX + 5, cardY + 14);
+      doc.text("SALDO", cardX + 5, cardY + 14);
       doc.setFontSize(5.6);
       doc.text(cleanPdfText(meta?.rarityLabel || "Especial").toUpperCase(), cardX + cardWidth - 5, cardY + 9, { align: "right" });
 
@@ -2457,7 +2464,38 @@ async function createCompetitionPdfBlob(item) {
 
   if (matches.length) {
     y = addPage("RESULTADOS");
-    y = sectionTitle("Resultados completos", y);
+    y = sectionTitle("Resultados por jogador", y);
+    const resultPlayers = [
+      ...standings.map((entry) => entry?.name).filter(Boolean),
+      ...matches.flatMap((match) => [match?.playerA, match?.playerB]).filter(Boolean),
+    ].filter((name, index, names) => names.indexOf(name) === index);
+
+    const drawResultPlayerHeader = (playerName, playerMatches) => {
+      const wins = playerMatches.filter((match) => {
+        const isPlayerA = match.playerA === playerName;
+        return Number(isPlayerA ? match.scoreA : match.scoreB) > Number(isPlayerA ? match.scoreB : match.scoreA);
+      }).length;
+      const drawsCount = playerMatches.filter((match) => Number(match.scoreA) === Number(match.scoreB)).length;
+      const losses = Math.max(0, playerMatches.length - wins - drawsCount);
+      doc.setFillColor(247, 249, 253);
+      doc.setDrawColor(...line);
+      doc.roundedRect(margin, y, 182, 15, 2.5, 2.5, "FD");
+      drawPlayerEmblem(playerName, margin + 4, y + 2, 11);
+      doc.setTextColor(...navy);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(cleanPdfText(playerName).slice(0, 32), margin + 19, y + 6.5);
+      doc.setTextColor(...muted);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.2);
+      doc.text(
+        `${playerMatches.length} jogos | ${wins} V | ${drawsCount} E | ${losses} D`,
+        margin + 19,
+        y + 11.5,
+      );
+      y += 18;
+    };
+
     const matchHeader = () => {
       doc.setFillColor(...navy);
       doc.rect(margin, y, 182, 8, "F");
@@ -2465,34 +2503,59 @@ async function createCompetitionPdfBlob(item) {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7);
       doc.text("DATA", margin + 2, y + 5.3);
-      doc.text("JOGADOR A", margin + 32, y + 5.3);
-      doc.text("RESULTADO", margin + 93, y + 5.3, { align: "center" });
-      doc.text("JOGADOR B", margin + 111, y + 5.3);
-      doc.text("MVP", margin + 154, y + 5.3);
+      doc.text("ADVERSARIO", margin + 32, y + 5.3);
+      doc.text("RESULTADO", margin + 106, y + 5.3, { align: "center" });
+      doc.text("SITUACAO", margin + 132.5, y + 5.3, { align: "center" });
+      doc.text("MVP", margin + 148, y + 5.3);
       y += 8;
     };
-    matchHeader();
-    matches.forEach((match, index) => {
-      if (y > 272) {
-        y = addPage("RESULTADOS");
-        matchHeader();
-      }
-      doc.setFillColor(index % 2 === 0 ? 247 : 255, index % 2 === 0 ? 249 : 255, 253);
-      doc.rect(margin, y, 182, 8, "F");
-      doc.setTextColor(...ink);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.1);
-      const date = Number(match.ts || 0) ? new Date(Number(match.ts)).toLocaleDateString("pt-PT") : "-";
-      doc.text(date, margin + 2, y + 5.3);
-      drawPlayerEmblem(match.playerA || "-", margin + 28, y + 1, 6, match?.playerAEmblemId || "");
-      doc.text(cleanPdfText(match.playerA || "-").slice(0, 18), margin + 36, y + 5.3);
-      doc.setFont("helvetica", "bold");
-      doc.text(`${Number(match.scoreA || 0)} - ${Number(match.scoreB || 0)}`, margin + 93, y + 5.3, { align: "center" });
-      doc.setFont("helvetica", "normal");
-      drawPlayerEmblem(match.playerB || "-", margin + 106, y + 1, 6, match?.playerBEmblemId || "");
-      doc.text(cleanPdfText(match.playerB || "-").slice(0, 18), margin + 114, y + 5.3);
-      doc.text(cleanPdfText(match.mvp || "-").slice(0, 14), margin + 158, y + 5.3);
-      y += 8;
+
+    resultPlayers.forEach((playerName) => {
+      const playerMatches = matches.filter((match) => match.playerA === playerName || match.playerB === playerName);
+      if (!playerMatches.length) return;
+      if (y + 34 > 278) y = addPage("RESULTADOS POR JOGADOR");
+      drawResultPlayerHeader(playerName, playerMatches);
+      matchHeader();
+
+      playerMatches.forEach((match, index) => {
+        if (y > 272) {
+          y = addPage("RESULTADOS POR JOGADOR");
+          drawResultPlayerHeader(playerName, playerMatches);
+          matchHeader();
+        }
+        const isPlayerA = match.playerA === playerName;
+        const opponent = isPlayerA ? match.playerB : match.playerA;
+        const opponentEmblemId = isPlayerA ? match?.playerBEmblemId : match?.playerAEmblemId;
+        const goalsFor = Number(isPlayerA ? match.scoreA : match.scoreB);
+        const goalsAgainst = Number(isPlayerA ? match.scoreB : match.scoreA);
+        const situation = goalsFor > goalsAgainst ? "VITORIA" : goalsFor < goalsAgainst ? "DERROTA" : "EMPATE";
+        const situationColor: [number, number, number] = situation === "VITORIA"
+          ? blue
+          : situation === "DERROTA"
+            ? [180, 45, 60]
+            : muted;
+
+        doc.setFillColor(index % 2 === 0 ? 247 : 255, index % 2 === 0 ? 249 : 255, 253);
+        doc.rect(margin, y, 182, 8, "F");
+        doc.setTextColor(...ink);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.1);
+        const date = Number(match.ts || 0) ? new Date(Number(match.ts)).toLocaleDateString("pt-PT") : "-";
+        doc.text(date, margin + 2, y + 5.3);
+        drawPlayerEmblem(opponent || "-", margin + 28, y + 1, 6, opponentEmblemId || "");
+        doc.text(cleanPdfText(opponent || "-").slice(0, 20), margin + 36, y + 5.3);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${goalsFor} - ${goalsAgainst}`, margin + 106, y + 5.3, { align: "center" });
+        doc.setTextColor(...situationColor);
+        doc.setFontSize(6.6);
+        doc.text(situation, margin + 132.5, y + 5.3, { align: "center" });
+        doc.setTextColor(...ink);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.1);
+        doc.text(cleanPdfText(match.mvp || "-").slice(0, 17), margin + 148, y + 5.3);
+        y += 8;
+      });
+      y += 6;
     });
   }
 
