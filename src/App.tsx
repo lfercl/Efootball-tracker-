@@ -1635,6 +1635,14 @@ function normalizeGroupData(data) {
 
   const normalizedMatches = (data?.matches || []).map((match) => ({
     ...match,
+    playerAEmblemId:
+      match?.playerAEmblemId ||
+      (data?.players || []).find((player) => player?.name === match?.playerA)?.emblemId ||
+      "",
+    playerBEmblemId:
+      match?.playerBEmblemId ||
+      (data?.players || []).find((player) => player?.name === match?.playerB)?.emblemId ||
+      "",
     media: Array.isArray(match?.media) ? match.media : [],
     votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
   }));
@@ -1645,6 +1653,14 @@ function normalizeGroupData(data) {
     deletedBy: String(entry?.deletedBy || "Administrador"),
     match: {
       ...(entry?.match || {}),
+      playerAEmblemId:
+        entry?.match?.playerAEmblemId ||
+        (data?.players || []).find((player) => player?.name === entry?.match?.playerA)?.emblemId ||
+        "",
+      playerBEmblemId:
+        entry?.match?.playerBEmblemId ||
+        (data?.players || []).find((player) => player?.name === entry?.match?.playerB)?.emblemId ||
+        "",
       media: Array.isArray(entry?.match?.media) ? entry.match.media : [],
       votes: entry?.match?.votes && typeof entry.match.votes === "object" ? entry.match.votes : {},
     },
@@ -1700,6 +1716,16 @@ function normalizeGroupData(data) {
           matches: Array.isArray(league?.matches)
             ? league.matches.map((match) => ({
                 ...match,
+                playerAEmblemId:
+                  match?.playerAEmblemId ||
+                  league?.playerEmblems?.[match?.playerA] ||
+                  (data?.players || []).find((player) => player?.name === match?.playerA)?.emblemId ||
+                  "",
+                playerBEmblemId:
+                  match?.playerBEmblemId ||
+                  league?.playerEmblems?.[match?.playerB] ||
+                  (data?.players || []).find((player) => player?.name === match?.playerB)?.emblemId ||
+                  "",
                 media: Array.isArray(match?.media) ? match.media : [],
                 votes: match?.votes && typeof match.votes === "object" ? match.votes : {},
               }))
@@ -2062,6 +2088,10 @@ async function createCompetitionPdfBlob(item) {
   const emblemIds = [...new Set([
     championEmblemId,
     ...standings.map((entry) => playerEmblems[entry?.name] || ""),
+    ...matches.flatMap((match) => [
+      match?.playerAEmblemId || playerEmblems[match?.playerA] || "",
+      match?.playerBEmblemId || playerEmblems[match?.playerB] || "",
+    ]),
   ].filter(Boolean))];
   const pdfEmblems = {};
   await Promise.all(emblemIds.map(async (emblemId) => {
@@ -2290,12 +2320,40 @@ async function createCompetitionPdfBlob(item) {
       ...Object.keys(awardsByPlayer).filter((name) => !standings.some((entry) => entry.name === name)),
     ];
 
-    achievementPlayers.forEach((playerName) => {
-      const playerAwards = awardsByPlayer[playerName] || [];
-      const rows = Math.ceil(playerAwards.length / 2);
-      const blockHeight = 19 + rows * 15;
-      if (y + blockHeight > 278) y = addPage("CARTAS DE CONQUISTAS");
+    const cardWidth = 55;
+    const cardHeight = 69;
+    const cardGap = 8.5;
+    const setPdfFill = (color) => doc.setFillColor(color[0], color[1], color[2]);
+    const setPdfStroke = (color) => doc.setDrawColor(color[0], color[1], color[2]);
+    const achievementPalette = (rarity) => {
+      if (rarity === "legendary") {
+        return {
+          face: [91, 54, 11],
+          depth: [47, 25, 5],
+          edge: [255, 211, 92],
+          shine: [255, 239, 172],
+          text: [255, 248, 218],
+        };
+      }
+      if (rarity === "epic") {
+        return {
+          face: [48, 19, 82],
+          depth: [22, 9, 45],
+          edge: [239, 82, 222],
+          shine: [127, 229, 255],
+          text: [255, 239, 255],
+        };
+      }
+      return {
+        face: [16, 37, 72],
+        depth: [7, 17, 43],
+        edge: [226, 255, 52],
+        shine: [147, 238, 255],
+        text: [247, 255, 227],
+      };
+    };
 
+    const drawAchievementPlayerHeader = (playerName, playerAwards) => {
       const playerStats = standings.find((entry) => entry.name === playerName);
       doc.setFillColor(247, 249, 253);
       doc.roundedRect(margin, y, 182, 15, 2.5, 2.5, "F");
@@ -2308,33 +2366,92 @@ async function createCompetitionPdfBlob(item) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.2);
       doc.text(
-        `${Number(playerStats?.points || 0)} pts | ${Number(playerStats?.gf || 0)} gols | ${playerAwards.length} ${playerAwards.length === 1 ? "carta" : "cartas"}`,
+        `${Number(playerStats?.points || 0)} pts | ${Number(playerStats?.gf || 0)} gols | ${playerAwards.length} ${playerAwards.length === 1 ? "carta 3D" : "cartas 3D"}`,
         margin + 19,
         y + 11.5,
       );
-      y += 18;
+      y += 19;
+    };
 
-      playerAwards.forEach((award, awardIndex) => {
-        const col = awardIndex % 2;
-        const row = Math.floor(awardIndex / 2);
-        const cardX = margin + col * 92;
-        const cardY = y + row * 15;
-        const meta = getAchievementCardMeta(award, awardIndex);
-        doc.setFillColor(255, 250, 235);
-        doc.setDrawColor(230, 190, 82);
-        doc.roundedRect(cardX, cardY, 88, 12, 2, 2, "FD");
-        doc.setFillColor(230, 190, 82);
-        doc.roundedRect(cardX, cardY, 4, 12, 2, 2, "F");
-        doc.setTextColor(...blue);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6.4);
-        doc.text(`CARTA ${Number(meta?.rating || 90)} | ${cleanPdfText(meta?.rarityLabel || "Especial").toUpperCase()}`, cardX + 7, cardY + 4.4);
-        doc.setTextColor(...ink);
-        doc.setFontSize(7.4);
-        doc.text(cleanPdfText(award?.title || "Conquista").slice(0, 41), cardX + 7, cardY + 9.2);
-      });
+    const drawAchievement3dCard = (award, playerName, awardIndex, cardX, cardY) => {
+      const meta = getAchievementCardMeta(award, awardIndex);
+      const palette = achievementPalette(meta?.rarity);
 
-      y += rows * 15 + 4;
+      setPdfFill([205, 211, 224]);
+      doc.roundedRect(cardX + 3.2, cardY + 4.2, cardWidth, cardHeight, 4, 4, "F");
+      setPdfFill(palette.depth);
+      doc.roundedRect(cardX + 1.6, cardY + 2.1, cardWidth, cardHeight, 4, 4, "F");
+      setPdfFill(palette.face);
+      setPdfStroke(palette.edge);
+      doc.setLineWidth(0.8);
+      doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 4, 4, "FD");
+
+      setPdfStroke(palette.shine);
+      doc.setLineWidth(0.25);
+      doc.line(cardX + 5, cardY + 14, cardX + cardWidth - 5, cardY + 32);
+      doc.line(cardX + 9, cardY + 8, cardX + cardWidth - 9, cardY + 23);
+      setPdfStroke(palette.edge);
+      doc.setLineWidth(0.45);
+      doc.roundedRect(cardX + 3, cardY + 3, cardWidth - 6, cardHeight - 6, 3, 3, "D");
+
+      doc.setTextColor(palette.text[0], palette.text[1], palette.text[2]);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text(String(Number(meta?.rating || 90)), cardX + 5, cardY + 10);
+      doc.setFontSize(5.2);
+      doc.text("OVR", cardX + 5, cardY + 14);
+      doc.setFontSize(5.6);
+      doc.text(cleanPdfText(meta?.rarityLabel || "Especial").toUpperCase(), cardX + cardWidth - 5, cardY + 9, { align: "right" });
+
+      setPdfFill([244, 247, 252]);
+      setPdfStroke(palette.edge);
+      doc.circle(cardX + cardWidth / 2, cardY + 25, 9.6, "FD");
+      drawPlayerEmblem(playerName, cardX + cardWidth / 2 - 8, cardY + 17, 16);
+
+      doc.setTextColor(palette.text[0], palette.text[1], palette.text[2]);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.text(cleanPdfText(playerName).slice(0, 23), cardX + cardWidth / 2, cardY + 39, { align: "center" });
+      setPdfStroke(palette.edge);
+      doc.setLineWidth(0.35);
+      doc.line(cardX + 7, cardY + 42, cardX + cardWidth - 7, cardY + 42);
+
+      doc.setTextColor(palette.text[0], palette.text[1], palette.text[2]);
+      doc.setFontSize(6.6);
+      const titleLines = doc
+        .splitTextToSize(cleanPdfText(award?.title || "Conquista desbloqueada"), cardWidth - 10)
+        .slice(0, 3);
+      doc.text(titleLines, cardX + cardWidth / 2, cardY + 48, { align: "center" });
+
+      setPdfFill(palette.edge);
+      doc.roundedRect(cardX + 8, cardY + cardHeight - 9, cardWidth - 16, 5.5, 1.5, 1.5, "F");
+      doc.setTextColor(palette.depth[0], palette.depth[1], palette.depth[2]);
+      doc.setFontSize(5.5);
+      doc.text("CONQUISTA DESBLOQUEADA", cardX + cardWidth / 2, cardY + cardHeight - 5.2, { align: "center" });
+    };
+
+    achievementPlayers.forEach((playerName) => {
+      const playerAwards = awardsByPlayer[playerName] || [];
+      if (y + 19 + cardHeight > 278) y = addPage("CARTAS DE CONQUISTAS");
+      drawAchievementPlayerHeader(playerName, playerAwards);
+
+      for (let rowStart = 0; rowStart < playerAwards.length; rowStart += 3) {
+        if (y + cardHeight > 278) {
+          y = addPage("CARTAS DE CONQUISTAS");
+          drawAchievementPlayerHeader(playerName, playerAwards);
+        }
+        playerAwards.slice(rowStart, rowStart + 3).forEach((award, col) => {
+          drawAchievement3dCard(
+            award,
+            playerName,
+            rowStart + col,
+            margin + col * (cardWidth + cardGap),
+            y,
+          );
+        });
+        y += cardHeight + 8;
+      }
+      y += 3;
     });
   }
 
@@ -2367,12 +2484,12 @@ async function createCompetitionPdfBlob(item) {
       doc.setFontSize(7.1);
       const date = Number(match.ts || 0) ? new Date(Number(match.ts)).toLocaleDateString("pt-PT") : "-";
       doc.text(date, margin + 2, y + 5.3);
-      drawPlayerEmblem(match.playerA || "-", margin + 28, y + 1, 6);
+      drawPlayerEmblem(match.playerA || "-", margin + 28, y + 1, 6, match?.playerAEmblemId || "");
       doc.text(cleanPdfText(match.playerA || "-").slice(0, 18), margin + 36, y + 5.3);
       doc.setFont("helvetica", "bold");
       doc.text(`${Number(match.scoreA || 0)} - ${Number(match.scoreB || 0)}`, margin + 93, y + 5.3, { align: "center" });
       doc.setFont("helvetica", "normal");
-      drawPlayerEmblem(match.playerB || "-", margin + 106, y + 1, 6);
+      drawPlayerEmblem(match.playerB || "-", margin + 106, y + 1, 6, match?.playerBEmblemId || "");
       doc.text(cleanPdfText(match.playerB || "-").slice(0, 18), margin + 114, y + 5.3);
       doc.text(cleanPdfText(match.mvp || "-").slice(0, 14), margin + 158, y + 5.3);
       y += 8;
@@ -2426,6 +2543,12 @@ async function shareCompetitionPdf(item) {
 
 function getEmblemIdByName(players, name) {
   return players.find((p) => p.name === name)?.emblemId || "";
+}
+
+function getMatchPlayerEmblemId(match, players, playerName) {
+  if (playerName === match?.playerA && match?.playerAEmblemId) return match.playerAEmblemId;
+  if (playerName === match?.playerB && match?.playerBEmblemId) return match.playerBEmblemId;
+  return getEmblemIdByName(players || [], playerName);
 }
 
 function EmblemBadge({ emblemId, size = 32 }) {
@@ -4408,6 +4531,10 @@ function MainApp() {
         const topVote = Object.entries(votes).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
         return {
           ...match,
+          playerAEmblemId:
+            match?.playerAEmblemId || getEmblemIdByName(groupData?.players || [], match.playerA),
+          playerBEmblemId:
+            match?.playerBEmblemId || getEmblemIdByName(groupData?.players || [], match.playerB),
           scoreA: Number(match.scoreA || 0),
           scoreB: Number(match.scoreB || 0),
           ts: Number(match.ts || 0),
@@ -4572,6 +4699,8 @@ function MainApp() {
       ...updatedMatch,
       playerA,
       playerB,
+      playerAEmblemId: getEmblemIdByName(groupData?.players || [], playerA),
+      playerBEmblemId: getEmblemIdByName(groupData?.players || [], playerB),
       scoreA,
       scoreB,
       media: Array.isArray(updatedMatch.media) ? updatedMatch.media : [],
@@ -4812,6 +4941,8 @@ function MainApp() {
                       id: genId(),
                       playerA,
                       playerB,
+                      playerAEmblemId: getEmblemIdByName(groupData?.players || [], playerA),
+                      playerBEmblemId: getEmblemIdByName(groupData?.players || [], playerB),
                       scoreA,
                       scoreB,
                       media: [],
@@ -4916,6 +5047,7 @@ function MainApp() {
               <Standings
                 players={groupData?.players || []}
                 matches={groupData?.matches || []}
+                leagueHistory={groupData?.leagueHistory || []}
               />
             )}
             {tab === "h2h" && (
@@ -5206,9 +5338,9 @@ function Ticker({ matches, players }) {
           const loserScore = Math.min(m.scoreA, m.scoreB);
           return (
             <span key={i} className="md-ticker-item font-oswald text-sm tracking-wide md-text-muted">
-              <NameWithEmblem name={winner} emblemId={getEmblemIdByName(players, winner)} size={34} />
+              <NameWithEmblem name={winner} emblemId={getMatchPlayerEmblemId(m, players, winner)} size={34} />
               <span className="md-text-amber ml-1">{winnerScore}-{loserScore}</span>
-              <span className="ml-1"><NameWithEmblem name={loser} emblemId={getEmblemIdByName(players, loser)} size={34} /></span>
+              <span className="ml-1"><NameWithEmblem name={loser} emblemId={getMatchPlayerEmblemId(m, players, loser)} size={34} /></span>
             </span>
           );
         })}
@@ -5386,9 +5518,9 @@ function ActivityFeed({ matches, players, onClose }) {
             return (
               <div key={m.id} className="md-bg-panel md-border md-border-line rounded-lg px-3 py-2">
                 <p className="font-oswald text-sm md-text-bone">
-                  <NameWithEmblem name={winner} emblemId={getEmblemIdByName(players, winner)} size={36} />
+                  <NameWithEmblem name={winner} emblemId={getMatchPlayerEmblemId(m, players, winner)} size={36} />
                   <span className="md-text-amber mx-1">{winnerScore}-{loserScore}</span>
-                  <NameWithEmblem name={loser} emblemId={getEmblemIdByName(players, loser)} size={36} />
+                  <NameWithEmblem name={loser} emblemId={getMatchPlayerEmblemId(m, players, loser)} size={36} />
                 </p>
                 <p className="text-xs md-text-muted mt-0.5">
                   registrado por <NameWithEmblem name={m.recordedBy} emblemId={getEmblemIdByName(players, m.recordedBy)} size={28} /> · {new Date(m.ts).toLocaleString("pt-BR")}
@@ -6245,8 +6377,8 @@ async function buildProvocativeResultGifFile(match, players) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Não foi possível preparar o GIF do resultado.");
 
-  const emblemAId = getEmblemIdByName(players, match.playerA);
-  const emblemBId = getEmblemIdByName(players, match.playerB);
+  const emblemAId = getMatchPlayerEmblemId(match, players, match.playerA);
+  const emblemBId = getMatchPlayerEmblemId(match, players, match.playerB);
   const emblemA = EMBLEM_MAP[emblemAId];
   const emblemB = EMBLEM_MAP[emblemBId];
   let emblemAImage = null;
@@ -6506,9 +6638,9 @@ function ResultsManagement({
                       const loserScore = Math.min(match.scoreA, match.scoreB);
                       return (
                         <span className="font-oswald text-sm md-text-bone">
-                          <NameWithEmblem name={winner} emblemId={getEmblemIdByName(players, winner)} size={36} />
+                          <NameWithEmblem name={winner} emblemId={getMatchPlayerEmblemId(match, players, winner)} size={36} />
                           <span className="md-text-amber mx-1">{winnerScore}-{loserScore}</span>
-                          <NameWithEmblem name={loser} emblemId={getEmblemIdByName(players, loser)} size={36} />
+                          <NameWithEmblem name={loser} emblemId={getMatchPlayerEmblemId(match, players, loser)} size={36} />
                         </span>
                       );
                     })()}
@@ -8370,9 +8502,38 @@ function LeagueManager({
 
 /* ---------------- Standings ---------------- */
 
-function Standings({ players, matches }) {
+function Standings({ players, matches, leagueHistory = [] }) {
   const stats = sortStandings(computeStats(players, matches));
   const extras = computeExtraRankings(players, matches);
+  const careerMatches = useMemo(() => {
+    const uniqueMatches = [];
+    const seen = new Set();
+    const archivedMatches = (leagueHistory || []).flatMap((league) =>
+      Array.isArray(league?.matches) ? league.matches : [],
+    );
+
+    [...archivedMatches, ...(matches || [])].forEach((match) => {
+      const identity = match?.id || `${match?.playerA}-${match?.playerB}-${match?.ts}-${match?.scoreA}-${match?.scoreB}`;
+      if (seen.has(identity)) return;
+      seen.add(identity);
+      uniqueMatches.push(match);
+    });
+    return uniqueMatches;
+  }, [matches, leagueHistory]);
+  const careerStats = useMemo(
+    () => Object.fromEntries(computeStats(players, careerMatches).map((entry) => [entry.name, entry])),
+    [players, careerMatches],
+  );
+  const titlesByPlayer = useMemo(() => {
+    return Object.fromEntries(
+      (players || []).map((player) => [
+        player.name,
+        (leagueHistory || [])
+          .filter((league) => league?.champion?.name === player.name)
+          .sort((a, b) => Number(b?.finishedAt || 0) - Number(a?.finishedAt || 0)),
+      ]),
+    );
+  }, [players, leagueHistory]);
   const achievements = computeAchievements(players, matches);
   const achievementsByPlayer = achievements.reduce((acc, item) => {
     if (!acc[item.player]) acc[item.player] = [];
@@ -8398,6 +8559,84 @@ function Standings({ players, matches }) {
 
   return (
     <div className="space-y-4">
+      <section className="md-bg-panel md-border md-border-line rounded-xl p-4">
+        <div className="mb-4">
+          <p className="font-oswald text-xs tracking-[0.2em] md-text-amber">HISTÓRICO PERMANENTE</p>
+          <h3 className="font-oswald text-xl md-text-bone mt-1">CARDS DE CARREIRA</h3>
+          <p className="text-xs md-text-muted mt-1">As estrelas representam competições conquistadas e permanecem guardadas no histórico.</p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(players || []).map((player) => {
+            const career = careerStats[player.name] || {
+              played: 0,
+              wins: 0,
+              draws: 0,
+              losses: 0,
+              gf: 0,
+              ga: 0,
+            };
+            const titles = titlesByPlayer[player.name] || [];
+
+            return (
+              <article key={`career-${player.id || player.name}`} className="rounded-xl border border-white/10 bg-black/15 p-4 overflow-hidden relative">
+                <div className="absolute inset-x-0 top-0 h-1 md-bg-amber" aria-hidden="true" />
+                <div className="flex items-start justify-between gap-3">
+                  <NameWithEmblem
+                    name={player.name}
+                    emblemId={player.emblemId || ""}
+                    size={52}
+                    textClassName="font-oswald text-lg md-text-bone"
+                  />
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 font-oswald text-xs md-text-amber shrink-0">
+                    <Star size={13} fill="currentColor" /> {titles.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    ["PARTIDAS", career.played],
+                    ["VITÓRIAS", career.wins],
+                    ["DERROTAS", career.losses],
+                    ["EMPATES", career.draws],
+                    ["GOLS FEITOS", career.gf],
+                    ["GOLS SOFRIDOS", career.ga],
+                  ].map(([label, value]) => (
+                    <div key={`${player.name}-${label}`} className="rounded-lg border border-white/10 bg-black/15 px-2 py-2">
+                      <p className="font-oswald text-base md-text-bone">{value}</p>
+                      <p className="text-[9px] tracking-wide md-text-muted">{label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 border-t border-white/10 pt-3">
+                  <p className="text-[10px] font-oswald tracking-[0.16em] md-text-muted">TÍTULOS CONQUISTADOS</p>
+                  {titles.length === 0 ? (
+                    <p className="mt-2 text-xs md-text-muted">Ainda sem estrelas de campeão.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {titles.map((title) => (
+                        <div key={`title-${player.name}-${title.id}`} className="flex items-center gap-2 rounded-lg border border-amber-300/20 bg-amber-400/10 px-2.5 py-2">
+                          <Star size={14} fill="currentColor" className="md-text-amber shrink-0" />
+                          <span className="min-w-0">
+                            <strong className="block truncate font-oswald text-xs md-text-bone">{title.name || "Competição"}</strong>
+                            <small className="block text-[10px] md-text-muted">
+                              {Number(title?.finishedAt || 0)
+                                ? new Date(Number(title.finishedAt)).toLocaleDateString("pt-PT")
+                                : "Data não registada"}
+                            </small>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
       <div className="md-bg-panel md-border md-border-line rounded-xl p-4">
         <h3 className="font-oswald text-sm tracking-wide md-text-muted mb-3">RANKINGS</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
